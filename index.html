@@ -143,6 +143,8 @@
   <section id="view-dispatch" aria-labelledby="dispatch-heading" hidden>
     <h2 id="dispatch-heading" class="sr-only">Dispatch</h2>
 
+    <div class="d-banner" id="d-banner" hidden></div>
+
     <div class="card cal-card">
       <div class="cal-nav">
         <button type="button" class="nav-btn" id="d-prev-month" aria-label="Previous month">&#8249;</button>
@@ -213,6 +215,11 @@
             <input type="date" id="d_date" autocomplete="off">
             <p class="error-msg" data-error-for="d_date" hidden></p>
           </div>
+        </div>
+        <div class="field" data-field="d_hours">
+          <label class="f-label" for="d_hours">Projected hours</label>
+          <input type="number" id="d_hours" inputmode="decimal" step="0.5" min="0.5" max="16" value="2" autocomplete="off">
+          <p class="error-msg" data-error-for="d_hours" hidden></p>
         </div>
         <div class="field" data-field="d_priority">
           <span class="f-label">Priority</span>

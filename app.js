@@ -699,6 +699,32 @@
   var dLoaded = false;
   var dPriority = "flexible";
   var dEditingId = null;
+  var dAutoRolled = false;
+  var DAY_CAPACITY = 8; // productive hours per tech per day
+
+  function techBucket(tech) {
+    var s = String(tech || "").trim().toLowerCase();
+    return s === "" ? "unassigned" : s;
+  }
+
+  function prettyBucket(b) {
+    if (b === "unassigned") return "Unassigned";
+    return b.charAt(0).toUpperCase() + b.slice(1);
+  }
+
+  function nextDateStr(ds) {
+    var p = ds.split("-");
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    d.setDate(d.getDate() + 1);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+
+  function shortDate(ds) {
+    var p = ds.split("-");
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()] + ", " +
+      MONTHS_SHORT[d.getMonth()] + " " + d.getDate();
+  }
 
   function priorityLabel(p) {
     if (p === "emergency") return "Emergency";
@@ -762,6 +788,15 @@
     dJobs.forEach(function (j) {
       (dByDate[j.job_date] = dByDate[j.job_date] || []).push(j);
     });
+
+    // Adaptive rollover: unfinished past-due jobs move to the first
+    // day with room. Runs once per session (on first tab open).
+    var moved = [];
+    if (!dAutoRolled) {
+      dAutoRolled = true;
+      moved = await rolloverOverdue();
+    }
+    showDBanner(moved);
 
     renderDispatchGrid();
     if (dSelectedDate && dByDate[dSelectedDate]) {
@@ -841,9 +876,17 @@
       });
       return;
     }
+    var load = dayLoad(list);
+    var loadLine = list.length + (list.length === 1 ? " job" : " jobs") +
+      " &middot; " + load.total + "h planned";
+    if (load.over) loadLine += ' &middot; <span style="color:#fbbf24;font-weight:700">overbooked</span>';
+    var techLine = Object.keys(load.byTech).map(function (b) {
+      return prettyBucket(b) + " " + load.byTech[b] + "h";
+    }).join(" &middot; ");
     var html = '<div class="day-panel">' +
       '<div class="day-panel-head"><h3>' + esc(longDate(dateStr)) + "</h3>" + addBtn + "</div>" +
-      '<p class="day-totals">' + list.length + (list.length === 1 ? " job" : " jobs") + "</p>";
+      '<p class="day-totals">' + loadLine + "</p>" +
+      (techLine ? '<p class="day-totals">' + techLine + "</p>" : "");
     list.forEach(function (j) {
       html += '<button type="button" class="d-job-card" data-id="' + j.id + '">' +
         '<div class="job-top"><span class="job-title">' + esc(j.title) + "</span></div>" +
@@ -930,6 +973,8 @@
     document.getElementById("d_tech").value = job ? job.tech || "" : "";
     document.getElementById("d_date").value = job ? job.job_date : (dateStr || todayStr());
     document.getElementById("d_notes").value = job ? job.notes || "" : "";
+    document.getElementById("d_hours").value =
+      job && job.projected_hours != null ? job.projected_hours : 2;
     setDPriority(job ? job.priority : "flexible");
     dDetailBackdrop.hidden = true;
     dFormBackdrop.hidden = false;
@@ -955,6 +1000,12 @@
     var bad = false;
     if (!title) { dSetInvalid("d_title", "Enter a job name."); bad = true; }
     if (!date) { dSetInvalid("d_date", "Pick a date."); bad = true; }
+    var hrsRaw = document.getElementById("d_hours").value.trim();
+    var hrs = parseFloat(hrsRaw);
+    if (hrsRaw === "" || isNaN(hrs) || hrs <= 0 || hrs > 16) {
+      dSetInvalid("d_hours", "Enter projected hours (0.5–16).");
+      bad = true;
+    }
     if (bad) return;
 
     var payload = {
@@ -965,6 +1016,7 @@
       tech: document.getElementById("d_tech").value.trim() || null,
       job_date: date,
       priority: dPriority,
+      projected_hours: hrs,
       notes: document.getElementById("d_notes").value.trim() || null
     };
 
@@ -1008,6 +1060,8 @@
       (j.address ? '<div class="sheet-row"><span class="dim">' + esc(j.address) + "</span></div>" : "") +
       '<div class="sheet-row"><span class="dim">' + esc(longDate(j.job_date)) +
       (j.tech ? " &middot; " + esc(j.tech) : "") + "</span></div>" +
+      '<div class="sheet-row"><span class="dim">Planned: ' + (Number(j.projected_hours) || 0) +
+      "h</span></div>" +
       (j.notes ? '<div class="notes-box"><div class="notes-label">Notes</div><p>' + esc(j.notes) + "</p></div>" : "") +
       '<div class="section-label">Status</div>' +
       '<div class="d-status-row">' + statusBtns + "</div>" +
@@ -1048,4 +1102,121 @@
   dDetailBackdrop.addEventListener("click", function (e) {
     if (e.target === dDetailBackdrop) closeDDetail();
   });
+
+  /* ---------- dispatch: adaptive rollover ---------- */
+  // Planned (non-done) load for a list of jobs, per tech bucket.
+  function dayLoad(list) {
+    var total = 0;
+    var byTech = {};
+    var over = false;
+    list.forEach(function (j) {
+      if (j.status === "done") return;
+      var h = Number(j.projected_hours) || 0;
+      total += h;
+      var b = techBucket(j.tech);
+      byTech[b] = Math.round(((byTech[b] || 0) + h) * 100) / 100;
+    });
+    Object.keys(byTech).forEach(function (b) {
+      if (byTech[b] > DAY_CAPACITY) over = true;
+    });
+    return { total: Math.round(total * 100) / 100, byTech: byTech, over: over };
+  }
+
+  // Moves unfinished past-due jobs to the earliest day with room,
+  // in priority order. Done and waiting-on-parts jobs are never moved.
+  async function rolloverOverdue() {
+    var t = todayStr();
+    var overdue = dJobs.filter(function (j) {
+      return j.status === "scheduled" && j.job_date < t;
+    });
+    if (!overdue.length) return [];
+
+    var priRank = { emergency: 0, urgent: 1, flexible: 2 };
+    overdue.sort(function (a, b) {
+      return ((priRank[a.priority] == null ? 2 : priRank[a.priority]) -
+              (priRank[b.priority] == null ? 2 : priRank[b.priority])) ||
+        (a.job_date < b.job_date ? -1 : a.job_date > b.job_date ? 1 : 0);
+    });
+
+    // Current planned load per day per tech bucket (non-done jobs).
+    var loads = {};
+    dJobs.forEach(function (j) {
+      if (j.status === "done") return;
+      var b = techBucket(j.tech);
+      var h = Number(j.projected_hours) || 0;
+      loads[j.job_date] = loads[j.job_date] || {};
+      loads[j.job_date][b] = Math.round(((loads[j.job_date][b] || 0) + h) * 100) / 100;
+    });
+
+    var moved = [];
+    for (var i = 0; i < overdue.length; i++) {
+      var j = overdue[i];
+      var b = techBucket(j.tech);
+      var hrs = Number(j.projected_hours) || 0;
+      var from = j.job_date;
+      if (loads[from] && loads[from][b]) {
+        loads[from][b] = Math.round((loads[from][b] - hrs) * 100) / 100;
+      }
+      var day = t;
+      var placed = false;
+      for (var k = 0; k < 60; k++) {
+        var lb = (loads[day] && loads[day][b]) || 0;
+        if (lb + hrs <= DAY_CAPACITY) { placed = true; break; }
+        day = nextDateStr(day);
+      }
+      if (!placed) {
+        loads[from] = loads[from] || {};
+        loads[from][b] = Math.round(((loads[from][b] || 0) + hrs) * 100) / 100;
+        continue;
+      }
+      var res = await db.from("dispatch_jobs").update({ job_date: day }).eq("id", j.id);
+      if (res.error) {
+        loads[from] = loads[from] || {};
+        loads[from][b] = Math.round(((loads[from][b] || 0) + hrs) * 100) / 100;
+        continue;
+      }
+      loads[day] = loads[day] || {};
+      loads[day][b] = Math.round(((loads[day][b] || 0) + hrs) * 100) / 100;
+      j.job_date = day;
+      moved.push({ id: j.id, title: j.title, from: from, to: day });
+    }
+
+    dByDate = {};
+    dJobs.forEach(function (x) {
+      (dByDate[x.job_date] = dByDate[x.job_date] || []).push(x);
+    });
+    return moved;
+  }
+
+  function showDBanner(moved) {
+    var el = document.getElementById("d-banner");
+    if (!moved.length) {
+      el.hidden = true;
+      el.innerHTML = "";
+      return;
+    }
+    var items = moved.map(function (m) {
+      return "<li>" + esc(m.title) + " &rarr; " + esc(shortDate(m.to)) + "</li>";
+    }).join("");
+    el.innerHTML = "<strong>" + moved.length +
+      (moved.length === 1 ? " job" : " jobs") +
+      " rolled forward</strong> — not finished in time, moved to the first day with room." +
+      "<ul>" + items + "</ul>" +
+      '<div class="banner-actions">' +
+      '<button type="button" class="btn-outline btn-small" id="d-undo">Undo</button>' +
+      '<button type="button" class="btn-outline btn-small" id="d-dismiss">Dismiss</button>' +
+      "</div>";
+    el.hidden = false;
+    document.getElementById("d-undo").addEventListener("click", async function () {
+      el.hidden = true;
+      for (var i = 0; i < moved.length; i++) {
+        await db.from("dispatch_jobs").update({ job_date: moved[i].from }).eq("id", moved[i].id);
+      }
+      dSelectedDate = null;
+      await loadDispatch();
+    });
+    document.getElementById("d-dismiss").addEventListener("click", function () {
+      el.hidden = true;
+    });
+  }
 })();
