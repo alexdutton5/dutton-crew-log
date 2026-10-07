@@ -30,6 +30,12 @@
 
 <main class="wrap">
 
+  <!-- ============ TABS ============ -->
+  <nav class="tabs" id="tabs" aria-label="Views">
+    <button type="button" class="tab is-active" id="tab-log" aria-selected="true">Log a job</button>
+    <button type="button" class="tab" id="tab-view" aria-selected="false">View logs</button>
+  </nav>
+
   <!-- ============ ENTRY FORM ============ -->
   <section class="card" id="form-view" aria-labelledby="form-heading">
     <h2 id="form-heading">Log a job</h2>
@@ -96,6 +102,19 @@
       <div class="sum-row"><dt>Hours</dt><dd id="sum-hours"></dd></div>
     </dl>
     <button type="button" class="btn primary" id="another-btn">Log another job</button>
+  </section>
+
+  <!-- ============ LOG LIST ============ -->
+  <section class="card" id="list-view" aria-labelledby="list-heading" hidden>
+    <h2 id="list-heading">Logged jobs</h2>
+    <p class="sub">Newest first. Anyone with this link can see these.</p>
+    <div class="filter-row" role="group" aria-label="Filter by person">
+      <button type="button" class="chip is-active" data-filter="all">All</button>
+      <button type="button" class="chip" data-filter="Kyle Jelevach">Kyle</button>
+      <button type="button" class="chip" data-filter="Caleb Huston">Caleb</button>
+    </div>
+    <div id="entries" aria-live="polite"></div>
+    <button type="button" class="btn primary" id="refresh-btn">Refresh</button>
   </section>
 
   <!-- ============ NOT CONFIGURED YET ============ -->

@@ -1,11 +1,19 @@
 /* ============================================================
    Dutton Plumbing — Crew Log field entry app
    One submission per job → INSERT into Supabase `crew_logs`.
-   The anon key can only INSERT (Row Level Security); reads happen
-   server-side with the service_role key, never here.
+   The anon key can INSERT and SELECT (Row Level Security);
+   the View tab lists entries newest-first. Writes/reads that
+   need full access use the service_role key server-side only.
    ============================================================ */
 (function () {
   "use strict";
+
+  var tabsNav = document.getElementById("tabs");
+  var tabLog = document.getElementById("tab-log");
+  var tabView = document.getElementById("tab-view");
+  var listView = document.getElementById("list-view");
+  var entriesEl = document.getElementById("entries");
+  var refreshBtn = document.getElementById("refresh-btn");
 
   var formView = document.getElementById("form-view");
   var successView = document.getElementById("success-view");
@@ -35,6 +43,7 @@
     // config.js still has placeholders (or the Supabase CDN failed):
     // show the setup notice instead of a dead form.
     formView.hidden = true;
+    if (tabsNav) tabsNav.hidden = true;
     setupView.hidden = false;
     return;
   }
@@ -183,4 +192,82 @@
     window.scrollTo(0, 0);
     customerInput.focus();
   });
+
+  /* ---------- tabs ---------- */
+  function showTab(which) {
+    var isLog = which === "log";
+    tabLog.classList.toggle("is-active", isLog);
+    tabView.classList.toggle("is-active", !isLog);
+    tabLog.setAttribute("aria-selected", isLog ? "true" : "false");
+    tabView.setAttribute("aria-selected", isLog ? "false" : "true");
+    formView.hidden = !isLog;
+    successView.hidden = true;
+    listView.hidden = isLog;
+    if (!isLog) loadEntries();
+    window.scrollTo(0, 0);
+  }
+  tabLog.addEventListener("click", function () { showTab("log"); });
+  tabView.addEventListener("click", function () { showTab("view"); });
+
+  /* ---------- view logs ---------- */
+  var currentFilter = "all";
+  var cachedEntries = [];
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function renderEntries() {
+    var list = cachedEntries.filter(function (e) {
+      return currentFilter === "all" || e.person === currentFilter;
+    });
+    if (!list.length) {
+      entriesEl.innerHTML = '<p class="empty">No entries yet.</p>';
+      return;
+    }
+    entriesEl.innerHTML = list.map(function (e) {
+      var hrs = Number(e.hours);
+      return (
+        '<article class="entry">' +
+          '<div class="entry-head"><span class="entry-person">' + esc(e.person) + '</span>' +
+          '<span class="entry-date">' + esc(e.date) + '</span></div>' +
+          '<div class="entry-customer">' + esc(e.customer) + '</div>' +
+          '<p class="entry-desc">' + esc(e.description) + '</p>' +
+          '<div class="entry-hours">' + esc(e.hours) + (hrs === 1 ? " hour" : " hours") + '</div>' +
+        '</article>'
+      );
+    }).join("");
+  }
+
+  async function loadEntries() {
+    entriesEl.innerHTML = '<p class="empty">Loading&hellip;</p>';
+    try {
+      var res = await db
+        .from("crew_logs")
+        .select("id,person,date,customer,description,hours")
+        .order("date", { ascending: false })
+        .order("submitted_at", { ascending: false })
+        .limit(300);
+      if (res.error) throw res.error;
+      cachedEntries = res.data || [];
+      renderEntries();
+    } catch (err) {
+      entriesEl.innerHTML =
+        '<p class="empty">Couldn&rsquo;t load entries &mdash; check your signal and tap Refresh.</p>';
+    }
+  }
+
+  document.querySelectorAll(".chip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      document.querySelectorAll(".chip").forEach(function (c) {
+        c.classList.remove("is-active");
+      });
+      chip.classList.add("is-active");
+      currentFilter = chip.getAttribute("data-filter");
+      renderEntries();
+    });
+  });
+  refreshBtn.addEventListener("click", loadEntries);
 })();

@@ -362,3 +362,126 @@ textarea:focus-visible,
   text-transform: uppercase;
   padding-bottom: 32px;
 }
+
+/* ---------- tabs ---------- */
+
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.tab {
+  font-family: "Barlow", sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 14px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 2px solid var(--line);
+  box-shadow: var(--shadow);
+  border-radius: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tab.is-active {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.tab:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--line);
+}
+
+/* ---------- view tab ---------- */
+
+.filter-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.chip {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 10px 14px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 2px solid var(--line);
+  border-radius: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chip.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.entry {
+  border: 2px solid var(--line);
+  background: var(--bg);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.entry-person {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.entry-date {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.entry-customer {
+  font-weight: 700;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.entry-desc {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.entry-hours {
+  display: inline-block;
+  font-weight: 800;
+  font-size: 13px;
+  background: var(--panel2);
+  border: 2px solid var(--line);
+  padding: 4px 10px;
+}
+
+.empty {
+  color: var(--muted);
+  font-weight: 600;
+  text-align: center;
+  padding: 24px 0;
+}
+
+#refresh-btn { margin-top: 6px; }
