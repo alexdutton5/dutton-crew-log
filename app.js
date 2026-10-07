@@ -1,5 +1,5 @@
 /* ============================================================
-   Dutton Plumbing — Daily Job Log
+   Dutton Plumbing — Daily Job Log (dark)
    Tabs: Log Job (form → INSERT) and Calendar (month heatmap,
    day panels, job detail sheets). Reads use the anon key
    (SELECT allowed via RLS); full-access work stays server-side.
@@ -22,17 +22,23 @@
   var anotherBtn = document.getElementById("another-btn");
 
   var dateInput = document.getElementById("date");
-  var customerInput = document.getElementById("customer");
+  var personInput = document.getElementById("person");
+  var jobNameInput = document.getElementById("job_name");
+  var locationInput = document.getElementById("location");
   var descriptionInput = document.getElementById("description");
   var hoursInput = document.getElementById("hours");
+  var segBtns = Array.prototype.slice.call(document.querySelectorAll(".seg-btn"));
+  var jobStatus = "finished";
 
   var calGrid = document.getElementById("cal-grid");
   var calTitle = document.getElementById("cal-title");
   var prevBtn = document.getElementById("prev-month");
   var nextBtn = document.getElementById("next-month");
   var exportBtn = document.getElementById("export-btn");
+  var exportLabel = document.getElementById("export-label");
   var dayPanel = document.getElementById("day-panel");
   var statHours = document.getElementById("stat-hours");
+  var statHoursLabel = document.getElementById("stat-hours-label");
   var statJobs = document.getElementById("stat-jobs");
 
   var backdrop = document.getElementById("sheet-backdrop");
@@ -64,11 +70,13 @@
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
   ];
+  var MONTHS_SHORT = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  ];
   var WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
-  function pad(n) {
-    return String(n).padStart(2, "0");
-  }
+  function pad(n) { return String(n).padStart(2, "0"); }
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -77,14 +85,19 @@
   }
 
   function firstName(person) {
-    return String(person).split(" ")[0];
+    return String(person).trim().split(/\s+/)[0] || "Tech";
   }
 
+  // Person color coding: Kyle → rose, Caleb → teal, everyone else
+  // gets a stable color from the name hash.
+  var PALETTE = ["kyle", "caleb", "blue", "amber", "purple"];
   function personClass(person) {
     var f = firstName(person).toLowerCase();
-    if (f === "kyle") return "kyle";
-    if (f === "caleb") return "caleb";
-    return "";
+    if (f.indexOf("kyle") === 0) return "kyle";
+    if (f.indexOf("caleb") === 0) return "caleb";
+    var h = 0;
+    for (var i = 0; i < f.length; i++) h = (h * 31 + f.charCodeAt(i)) >>> 0;
+    return PALETTE[h % PALETTE.length];
   }
 
   function longDate(dateStr) {
@@ -101,7 +114,7 @@
 
   function fmtHours(h) {
     var n = Math.round(Number(h) * 100) / 100;
-    return (Number.isInteger(n) ? n.toString() : n.toString()) + "h";
+    return n + "h";
   }
 
   /* ---------- tabs ---------- */
@@ -115,9 +128,7 @@
     tabCal.setAttribute("aria-selected", isLog ? "false" : "true");
     viewLog.hidden = !isLog;
     viewCal.hidden = isLog;
-    if (!isLog && !calLoaded) {
-      loadMonth();
-    }
+    if (!isLog && !calLoaded) loadMonth();
     window.scrollTo(0, 0);
   }
   tabLog.addEventListener("click", function () { showTab("log"); });
@@ -125,6 +136,19 @@
 
   /* ---------- default date = today ---------- */
   dateInput.value = todayStr();
+
+  /* ---------- status segmented control ---------- */
+  segBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      segBtns.forEach(function (b) {
+        b.classList.remove("is-active");
+        b.setAttribute("aria-pressed", "false");
+      });
+      btn.classList.add("is-active");
+      btn.setAttribute("aria-pressed", "true");
+      jobStatus = btn.getAttribute("data-status");
+    });
+  });
 
   /* ---------- form validation ---------- */
   function fieldEl(name) {
@@ -154,20 +178,18 @@
 
   function validate() {
     var errors = {};
-    var values = {};
+    var values = { status: jobStatus };
 
-    var personEl = form.querySelector('input[name="person"]:checked');
-    if (!personEl) {
-      errors.person = "Pick a name.";
-    } else {
-      values.person = personEl.value;
-    }
+    values.person = personInput.value.trim();
+    if (!values.person) errors.person = "Enter your name.";
 
     values.date = dateInput.value.trim();
     if (!values.date) errors.date = "Pick the date you worked.";
 
-    values.customer = customerInput.value.trim();
-    if (!values.customer) errors.customer = "Enter the customer or site.";
+    values.job_name = jobNameInput.value.trim();
+    if (!values.job_name) errors.job_name = "Enter a job name.";
+
+    values.location = locationInput.value.trim();
 
     values.description = descriptionInput.value.trim();
     if (!values.description) errors.description = "Say what you did.";
@@ -207,12 +229,13 @@
       var res = await db.from("crew_logs").insert({
         person: result.values.person,
         date: result.values.date,
-        customer: result.values.customer,
+        job_name: result.values.job_name,
+        location: result.values.location || null,
         description: result.values.description,
-        hours: result.values.hours
+        hours: result.values.hours,
+        status: result.values.status
       });
       if (res.error) throw res.error;
-      // Refresh the calendar cache if it's showing this entry's month.
       if (calLoaded) {
         var parts = result.values.date.split("-");
         if (Number(parts[0]) === calYear && Number(parts[1]) - 1 === calMonth) {
@@ -233,16 +256,20 @@
   function showSuccess(v) {
     document.getElementById("sum-name").textContent = v.person;
     document.getElementById("sum-date").textContent = v.date;
-    document.getElementById("sum-customer").textContent = v.customer;
+    document.getElementById("sum-job").textContent = v.job_name;
     document.getElementById("sum-hours").textContent =
       v.hours + (Number(v.hours) === 1 ? " hour" : " hours");
+    document.getElementById("sum-status").textContent =
+      v.status === "ongoing" ? "Ongoing" : "Finished";
     formView.hidden = true;
     successView.hidden = false;
     window.scrollTo(0, 0);
   }
 
   anotherBtn.addEventListener("click", function () {
-    customerInput.value = "";
+    personInput.value = "";
+    jobNameInput.value = "";
+    locationInput.value = "";
     descriptionInput.value = "";
     hoursInput.value = "";
     clearErrors();
@@ -251,16 +278,16 @@
     successView.hidden = true;
     formView.hidden = false;
     window.scrollTo(0, 0);
-    customerInput.focus();
+    personInput.focus();
   });
 
   /* ---------- calendar state ---------- */
   var now = new Date();
   var calYear = now.getFullYear();
-  var calMonth = now.getMonth(); // 0-based
+  var calMonth = now.getMonth();
   var selectedDate = null;
-  var monthEntries = []; // entries for the viewed month
-  var byDate = {};       // date string -> [entries]
+  var monthEntries = [];
+  var byDate = {};
 
   prevBtn.addEventListener("click", function () {
     calMonth--;
@@ -278,19 +305,20 @@
   async function loadMonth() {
     calLoaded = true;
     var start = calYear + "-" + pad(calMonth + 1) + "-01";
-    var nm = calMonth + 1;
-    var ny = calYear;
+    var nm = calMonth + 1, ny = calYear;
     if (nm > 11) { nm = 0; ny++; }
     var end = ny + "-" + pad(nm + 1) + "-01";
 
     calTitle.textContent = MONTHS[calMonth] + " " + calYear;
+    exportLabel.textContent = "Export " + MONTHS[calMonth] + " " + calYear + " (CSV)";
+    statHoursLabel.textContent = MONTHS_SHORT[calMonth] + " hrs";
     calGrid.innerHTML = '<p class="empty-day">Loading&hellip;</p>';
     dayPanel.innerHTML = "";
 
     try {
       var res = await db
         .from("crew_logs")
-        .select("id,person,date,customer,description,hours")
+        .select("id,person,date,job_name,location,description,hours,status")
         .gte("date", start)
         .lt("date", end)
         .order("date", { ascending: true })
@@ -315,7 +343,6 @@
     statJobs.textContent = monthEntries.length;
 
     renderGrid();
-    // Auto-select today if viewing the current month.
     var t = todayStr();
     if (byDate[t]) {
       selectDay(t);
@@ -327,7 +354,7 @@
   function renderGrid() {
     var html = '<div class="cal-weekdays" role="row">' +
       WEEKDAYS.map(function (d) { return "<span>" + d + "</span>"; }).join("") +
-      "</div><div class='cal-days'>";
+      '</div><div class="cal-days">';
 
     var first = new Date(calYear, calMonth, 1).getDay();
     var daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
@@ -349,7 +376,7 @@
         hrs = '<span class="day-hours">' + fmtHours(Math.round(sum * 100) / 100) + "</span>";
       }
       html += '<button type="button" class="' + cls + '" data-date="' + ds + '" role="gridcell" aria-label="' +
-        longDate(ds) + (list.length ? ", " + list.length + " jobs" : "") + '">' +
+        esc(longDate(ds)) + (list.length ? ", " + list.length + " jobs" : "") + '">' +
         '<span class="day-num">' + d + "</span>" + hrs + "</button>";
     }
     html += "</div>";
@@ -360,6 +387,13 @@
         selectDay(btn.getAttribute("data-date"));
       });
     });
+  }
+
+  function statusBadge(status) {
+    if (status === "ongoing") {
+      return '<span class="status-tag ongoing">&#9719; Ongoing</span>';
+    }
+    return '<span class="status-tag finished">&#10003; Finished</span>';
   }
 
   function selectDay(dateStr) {
@@ -374,8 +408,7 @@
       dayPanel.innerHTML = '<div class="day-panel"><p class="empty-day" style="padding:0">No jobs logged this day.</p></div>';
       return;
     }
-    var total = list.reduce(function (a, e) { return a + (Number(e.hours) || 0); }, 0);
-    total = Math.round(total * 100) / 100;
+    var total = Math.round(list.reduce(function (a, e) { return a + (Number(e.hours) || 0); }, 0) * 100) / 100;
 
     var html = '<div class="day-panel">' +
       '<div class="day-panel-head"><h3>' + esc(longDate(dateStr)) + "</h3>" +
@@ -385,12 +418,13 @@
 
     list.forEach(function (e) {
       var pc = personClass(e.person);
-      html += '<button type="button" class="job-card person-' + pc + '" data-id="' + e.id + '">' +
-        '<div class="job-top"><span class="job-title">' + esc(e.customer) + "</span>" +
+      html += '<button type="button" class="job-card st-' + pc + '" data-id="' + e.id + '">' +
+        '<div class="job-top"><span class="job-title">' + esc(e.job_name || e.customer || "Job") + "</span>" +
         '<span class="job-hours">' + fmtHours(e.hours) + "</span></div>" +
-        '<div class="job-meta"><span class="name-tag ' + pc + '">' + esc(firstName(e.person)) + "</span>" +
-        '<span class="job-date">' + esc(e.date) + "</span></div>" +
-        '<p class="job-desc">' + esc(e.description) + "</p>" +
+        '<div class="job-meta"><span class="name-tag ' + (pc === "kyle" || pc === "caleb" ? pc : "") + '">' +
+        esc(firstName(e.person)) + "</span>" + statusBadge(e.status) + "</div>" +
+        (e.location ? '<div class="job-loc">' + esc(e.location) + "</div>" : "") +
+        (e.description ? '<p class="job-desc">' + esc(e.description) + "</p>" : "") +
         "</button>";
     });
     html += "</div>";
@@ -416,8 +450,10 @@
     var text = longDate(dateStr) + " — " + list.length +
       (list.length === 1 ? " job, " : " jobs, ") + total + " hrs\n" +
       list.map(function (e) {
-        return "• " + firstName(e.person) + " — " + e.customer + " — " +
-          e.description + " (" + e.hours + "h)";
+        var tag = e.status === "ongoing" ? " (ongoing)" : "";
+        return "• " + firstName(e.person) + " — " + (e.job_name || "") +
+          (e.location ? " @ " + e.location : "") + " — " + (e.description || "") +
+          " (" + e.hours + "h)" + tag;
       }).join("\n");
 
     function done(ok) {
@@ -444,9 +480,10 @@
   }
 
   exportBtn.addEventListener("click", function () {
-    var rows = [["Date", "Person", "Customer", "Work Performed", "Hours"]];
+    var rows = [["Date", "Technician", "Job Name", "Location", "Status", "Hours", "Work Performed"]];
     monthEntries.forEach(function (e) {
-      rows.push([e.date, e.person, e.customer, e.description, e.hours]);
+      rows.push([e.date, e.person, e.job_name || "", e.location || "",
+        e.status === "ongoing" ? "Ongoing" : "Finished", e.hours, e.description || ""]);
     });
     var csv = rows.map(function (r) { return r.map(csvCell).join(","); }).join("\n");
     var blob = new Blob([csv], { type: "text/csv" });
@@ -462,12 +499,15 @@
   function openSheet(e) {
     var pc = personClass(e.person);
     sheetBody.innerHTML =
-      '<h3 class="sheet-title">' + esc(e.customer) + "</h3>" +
-      '<div class="sheet-row"><span class="hours-big">' + fmtHours(e.hours) + '</span>' +
-      '<span class="name-tag ' + pc + '">' + esc(e.person) + "</span></div>" +
-      '<div class="sheet-row" style="color:var(--muted);font-size:14px;font-weight:600">' + esc(longDate(e.date)) + "</div>" +
-      '<div class="notes-box"><div class="notes-label">Work performed</div><p>' +
-      esc(e.description) + "</p></div>";
+      '<h3 class="sheet-title">' + esc(e.job_name || e.customer || "Job") + "</h3>" +
+      '<div class="sheet-row"><span class="hours-big">' + fmtHours(e.hours) + "</span>" +
+      '<span class="name-tag ' + (pc === "kyle" || pc === "caleb" ? pc : "") + '">' + esc(e.person) + "</span>" +
+      statusBadge(e.status) + "</div>" +
+      '<div class="sheet-row"><span class="dim">' + esc(longDate(e.date)) +
+      (e.location ? " &middot; " + esc(e.location) : "") + "</span></div>" +
+      (e.description ?
+        '<div class="notes-box"><div class="notes-label">Work performed</div><p>' +
+        esc(e.description) + "</p></div>" : "");
     backdrop.hidden = false;
     document.body.style.overflow = "hidden";
   }

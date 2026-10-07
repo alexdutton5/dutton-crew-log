@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Crew Log — Dutton Plumbing</title>
-<meta name="description" content="Dutton Plumbing daily crew job log.">
+<title>Dutton Plumbing Job Log</title>
+<meta name="description" content="Dutton Plumbing daily job log.">
 <meta name="theme-color" content="#0a0a0a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -16,60 +17,68 @@
 <header class="app-header">
   <div class="wrap header-inner">
     <div class="brand">
-      <div class="logo-badge" aria-hidden="true">P</div>
+      <div class="logo-badge" aria-hidden="true">&#128736;</div>
       <div>
-        <div class="brand-name">Dutton Plumbing</div>
+        <div class="brand-name">DUTTON PLUMBING</div>
         <div class="brand-sub">Daily Job Log</div>
       </div>
     </div>
   </div>
+  <nav class="tabbar" aria-label="Views">
+    <div class="wrap tabbar-inner">
+      <button type="button" class="tab is-active" id="tab-log" aria-selected="true">&#43; Log Job</button>
+      <button type="button" class="tab" id="tab-cal" aria-selected="false">&#128197; Calendar</button>
+    </div>
+  </nav>
 </header>
-
-<nav class="tabbar" aria-label="Views">
-  <div class="wrap tabbar-inner">
-    <button type="button" class="tab is-active" id="tab-log" aria-selected="true">&#43; Log Job</button>
-    <button type="button" class="tab" id="tab-cal" aria-selected="false">Calendar</button>
-  </div>
-</nav>
 
 <main class="wrap">
 
   <!-- ============ LOG JOB ============ -->
   <section id="view-log" aria-labelledby="form-heading">
     <form id="crew-form" class="card form-card" novalidate>
-      <h2 id="form-heading">Log a job</h2>
-      <p class="sub">Fill it out at the job site. Takes 30 seconds.</p>
+      <div class="form-row">
+        <div class="field" data-field="date">
+          <label class="f-label" for="date">Date</label>
+          <input type="date" id="date" name="date" autocomplete="off">
+          <p class="error-msg" data-error-for="date" hidden></p>
+        </div>
+        <div class="field" data-field="person">
+          <label class="f-label" for="person">Technician</label>
+          <input type="text" id="person" name="person" placeholder="Name" autocomplete="off" maxlength="60">
+          <p class="error-msg" data-error-for="person" hidden></p>
+        </div>
+      </div>
 
-      <div class="field" data-field="date">
-        <label class="f-label" for="date">Date</label>
-        <input type="date" id="date" name="date" autocomplete="off">
-        <p class="error-msg" data-error-for="date" hidden></p>
+      <div class="field" data-field="job_name">
+        <label class="f-label" for="job_name">Job name</label>
+        <input type="text" id="job_name" name="job_name" placeholder="e.g. Cast iron pipe repair" autocomplete="off" maxlength="120">
+        <p class="error-msg" data-error-for="job_name" hidden></p>
+      </div>
+
+      <div class="field" data-field="location">
+        <label class="f-label" for="location">Location</label>
+        <input type="text" id="location" name="location" placeholder="e.g. CBRE Anchor Centre" autocomplete="off" maxlength="120">
+        <p class="error-msg" data-error-for="location" hidden></p>
       </div>
 
       <div class="field" data-field="hours">
-        <label class="f-label" for="hours">Hours</label>
-        <input type="number" id="hours" name="hours" inputmode="decimal" step="0.25" min="0" max="24" placeholder="e.g. 2.5" autocomplete="off">
+        <label class="f-label" for="hours">Hours spent</label>
+        <input type="number" id="hours" name="hours" inputmode="decimal" step="0.25" min="0" max="24" placeholder="0.0" autocomplete="off">
         <p class="error-msg" data-error-for="hours" hidden></p>
       </div>
 
-      <div class="field" data-field="person">
-        <span class="f-label" id="person-label">Person</span>
-        <div class="person-pills" role="radiogroup" aria-labelledby="person-label">
-          <label class="person-pill"><input type="radio" name="person" value="Caleb Huston"><span>Caleb</span></label>
-          <label class="person-pill"><input type="radio" name="person" value="Kyle Jelevach"><span>Kyle</span></label>
+      <div class="field" data-field="status">
+        <span class="f-label" id="status-label">Job status</span>
+        <div class="status-seg" role="radiogroup" aria-labelledby="status-label">
+          <button type="button" class="seg-btn is-active" data-status="finished" aria-pressed="true">&#10003; Finished</button>
+          <button type="button" class="seg-btn" data-status="ongoing" aria-pressed="false">&#9719; Ongoing</button>
         </div>
-        <p class="error-msg" data-error-for="person" hidden></p>
-      </div>
-
-      <div class="field" data-field="customer">
-        <label class="f-label" for="customer">Customer / Site</label>
-        <input type="text" id="customer" name="customer" placeholder="e.g. W Hotel Scottsdale" autocomplete="off" maxlength="120">
-        <p class="error-msg" data-error-for="customer" hidden></p>
       </div>
 
       <div class="field" data-field="description">
-        <label class="f-label" for="description">Work performed</label>
-        <textarea id="description" name="description" rows="4" placeholder="What did you do?" maxlength="2000"></textarea>
+        <label class="f-label" for="description">What did you do? (2&ndash;5 sentences)</label>
+        <textarea id="description" name="description" rows="4" placeholder="e.g. Replaced the failed pressure-reducing valve on the 3rd floor riser, tested static pressure at 62 psi, no leaks found." maxlength="2000"></textarea>
         <p class="error-msg" data-error-for="description" hidden></p>
       </div>
 
@@ -83,10 +92,11 @@
       <h2 id="success-heading">Logged!</h2>
       <p class="sub">Nice work. Here's what went in:</p>
       <dl class="summary">
-        <div class="sum-row"><dt>Name</dt><dd id="sum-name"></dd></div>
+        <div class="sum-row"><dt>Technician</dt><dd id="sum-name"></dd></div>
         <div class="sum-row"><dt>Date</dt><dd id="sum-date"></dd></div>
-        <div class="sum-row"><dt>Customer</dt><dd id="sum-customer"></dd></div>
+        <div class="sum-row"><dt>Job</dt><dd id="sum-job"></dd></div>
         <div class="sum-row"><dt>Hours</dt><dd id="sum-hours"></dd></div>
+        <div class="sum-row"><dt>Status</dt><dd id="sum-status"></dd></div>
       </dl>
       <button type="button" class="btn primary" id="another-btn">Log another job</button>
     </section>
@@ -97,20 +107,19 @@
     <h2 id="cal-heading" class="sr-only">Calendar</h2>
 
     <div class="stats" id="stats">
-      <div class="stat-card"><div class="stat-num" id="stat-hours">0</div><div class="stat-label">Month hrs</div></div>
-      <div class="stat-card"><div class="stat-num" id="stat-jobs">0</div><div class="stat-label">Jobs logged</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-hours">0</div><div class="stat-label" id="stat-hours-label">Oct hrs</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-jobs">0</div><div class="stat-label">jobs logged</div></div>
     </div>
 
-    <div class="cal-nav">
-      <div class="cal-month">
+    <div class="card cal-card">
+      <div class="cal-nav">
         <button type="button" class="nav-btn" id="prev-month" aria-label="Previous month">&#8249;</button>
         <span class="cal-title" id="cal-title">October 2026</span>
         <button type="button" class="nav-btn" id="next-month" aria-label="Next month">&#8250;</button>
       </div>
-      <button type="button" class="btn-outline" id="export-btn">Export CSV</button>
+      <button type="button" class="btn-outline btn-block" id="export-btn">&#8681; <span id="export-label">Export October 2026 (CSV)</span></button>
+      <div class="cal-grid" id="cal-grid" role="grid" aria-label="Month calendar"></div>
     </div>
-
-    <div class="cal-grid" id="cal-grid" role="grid" aria-label="Month calendar"></div>
 
     <div id="day-panel"></div>
   </section>
@@ -134,7 +143,7 @@
   </div>
 </div>
 
-<footer class="wrap foot">Dutton Plumbing &middot; Crew Log</footer>
+<footer class="wrap foot">Dutton Plumbing &middot; Daily Job Log</footer>
 
 <script src="config.js"></script>
 <script src="app.js"></script>
