@@ -28,6 +28,7 @@
     <div class="wrap tabbar-inner">
       <button type="button" class="tab is-active" id="tab-log" aria-selected="true">&#43; Log Job</button>
       <button type="button" class="tab" id="tab-cal" aria-selected="false">&#128197; Calendar</button>
+      <button type="button" class="tab" id="tab-dispatch" aria-selected="false">Dispatch</button>
     </div>
   </nav>
 </header>
@@ -138,6 +139,23 @@
     <div id="day-panel"></div>
   </section>
 
+  <!-- ============ DISPATCH ============ -->
+  <section id="view-dispatch" aria-labelledby="dispatch-heading" hidden>
+    <h2 id="dispatch-heading" class="sr-only">Dispatch</h2>
+
+    <div class="card cal-card">
+      <div class="cal-nav">
+        <button type="button" class="nav-btn" id="d-prev-month" aria-label="Previous month">&#8249;</button>
+        <span class="cal-title" id="d-cal-title">October 2026</span>
+        <button type="button" class="nav-btn" id="d-next-month" aria-label="Next month">&#8250;</button>
+      </div>
+      <button type="button" class="btn primary btn-block" id="d-add-btn">&#43; Add Job</button>
+      <div class="cal-grid d-cal-grid" id="d-cal-grid" role="grid" aria-label="Dispatch calendar"></div>
+    </div>
+
+    <div id="d-day-panel"></div>
+  </section>
+
   <!-- ============ NOT CONFIGURED ============ -->
   <section class="card" id="setup-view" aria-labelledby="setup-heading" hidden>
     <h2 id="setup-heading">Not connected yet</h2>
@@ -154,6 +172,75 @@
       <button type="button" class="sheet-close" id="sheet-close" aria-label="Close">&#10005;</button>
     </div>
     <div class="sheet-body" id="sheet-body"></div>
+  </div>
+</div>
+
+<!-- ============ DISPATCH: ADD/EDIT JOB SHEET ============ -->
+<div class="sheet-backdrop" id="dform-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dform-title">
+    <div class="sheet-header">
+      <span id="dform-title">Add job</span>
+      <button type="button" class="sheet-close" id="dform-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="sheet-body">
+      <form id="d-job-form" novalidate>
+        <div class="field" data-field="d_title">
+          <label class="f-label" for="d_title">Job</label>
+          <input type="text" id="d_title" placeholder="e.g. Water heater swap" maxlength="120" autocomplete="off">
+          <p class="error-msg" data-error-for="d_title" hidden></p>
+        </div>
+        <div class="form-row">
+          <div class="field" data-field="d_client">
+            <label class="f-label" for="d_client">Client</label>
+            <input type="text" id="d_client" placeholder="Name" maxlength="120" autocomplete="off">
+          </div>
+          <div class="field" data-field="d_phone">
+            <label class="f-label" for="d_phone">Phone</label>
+            <input type="tel" id="d_phone" placeholder="(555) 123-4567" maxlength="30" autocomplete="off">
+          </div>
+        </div>
+        <div class="field" data-field="d_address">
+          <label class="f-label" for="d_address">Address</label>
+          <input type="text" id="d_address" placeholder="Street address" maxlength="200" autocomplete="off">
+        </div>
+        <div class="form-row">
+          <div class="field" data-field="d_tech">
+            <label class="f-label" for="d_tech">Tech</label>
+            <input type="text" id="d_tech" placeholder="Name" maxlength="60" autocomplete="off">
+          </div>
+          <div class="field" data-field="d_date">
+            <label class="f-label" for="d_date">Date</label>
+            <input type="date" id="d_date" autocomplete="off">
+            <p class="error-msg" data-error-for="d_date" hidden></p>
+          </div>
+        </div>
+        <div class="field" data-field="d_priority">
+          <span class="f-label">Priority</span>
+          <div class="status-seg seg-3" role="radiogroup" aria-label="Priority">
+            <button type="button" class="seg-btn" data-priority="emergency" aria-pressed="false">Emergency</button>
+            <button type="button" class="seg-btn" data-priority="urgent" aria-pressed="false">Urgent</button>
+            <button type="button" class="seg-btn is-active" data-priority="flexible" aria-pressed="true">Flexible</button>
+          </div>
+        </div>
+        <div class="field" data-field="d_notes">
+          <label class="f-label" for="d_notes">Notes</label>
+          <textarea id="d_notes" rows="3" placeholder="Gate code, parking, parts needed, etc." maxlength="2000"></textarea>
+        </div>
+        <div class="form-error" id="d-form-error" role="alert" hidden></div>
+        <button type="submit" class="btn primary" id="d-submit-btn">&#43; Schedule Job</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DISPATCH: JOB DETAIL SHEET ============ -->
+<div class="sheet-backdrop" id="ddetail-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ddetail-title">
+    <div class="sheet-header">
+      <span id="ddetail-title">Job</span>
+      <button type="button" class="sheet-close" id="ddetail-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="sheet-body" id="ddetail-body"></div>
   </div>
 </div>
 

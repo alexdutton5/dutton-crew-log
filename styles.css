@@ -861,3 +861,110 @@ textarea:focus-visible,
 
 /* three stat cards */
 .stats { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ---------- dispatch ---------- */
+
+.seg-3 { grid-template-columns: repeat(3, 1fr); }
+
+.d-cal-grid .day {
+  aspect-ratio: auto;
+  min-height: 78px;
+  justify-content: flex-start;
+  align-items: stretch;
+  padding: 6px 4px;
+}
+
+.d-cal-grid .day-num { text-align: center; }
+
+.pill {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 6px;
+  border-radius: 6px;
+  margin-top: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pill.emergency { background: #4c1d24; color: #fda4af; }
+.pill.urgent { background: #45300a; color: #fbbf24; }
+.pill.flexible { background: #16294d; color: #93c5fd; }
+.pill.done { background: #2e2e2e; color: #8a8a8a; text-decoration: line-through; }
+
+.more-link {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 700;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.pri-tag {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.pri-tag.emergency { background: #4c1d24; color: #fda4af; }
+.pri-tag.urgent { background: #45300a; color: #fbbf24; }
+.pri-tag.flexible { background: #16294d; color: #93c5fd; }
+.pri-tag.done { background: #2e2e2e; color: #8a8a8a; }
+
+.d-job-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+  font: inherit;
+  color: inherit;
+}
+
+.d-job-card:active { background: #2a2a2a; }
+
+.d-status-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.d-status-btn {
+  background: var(--input-bg);
+  border: 1px solid var(--input-line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 12px 4px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.d-status-btn.is-active {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  color: #fff;
+}
+
+.d-actions .btn-outline { margin-bottom: 10px; }
+
+a.d-call {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  border-color: #166534;
+  color: #6ee7b7;
+}

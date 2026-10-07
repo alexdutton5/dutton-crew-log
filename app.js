@@ -10,8 +10,10 @@
   /* ---------- elements ---------- */
   var tabLog = document.getElementById("tab-log");
   var tabCal = document.getElementById("tab-cal");
+  var tabDispatch = document.getElementById("tab-dispatch");
   var viewLog = document.getElementById("view-log");
   var viewCal = document.getElementById("view-cal");
+  var viewDispatch = document.getElementById("view-dispatch");
   var setupView = document.getElementById("setup-view");
 
   var formView = document.getElementById("crew-form");
@@ -127,18 +129,22 @@
   var calLoaded = false;
 
   function showTab(which) {
-    var isLog = which === "log";
-    tabLog.classList.toggle("is-active", isLog);
-    tabCal.classList.toggle("is-active", !isLog);
-    tabLog.setAttribute("aria-selected", isLog ? "true" : "false");
-    tabCal.setAttribute("aria-selected", isLog ? "false" : "true");
-    viewLog.hidden = !isLog;
-    viewCal.hidden = isLog;
-    if (!isLog && !calLoaded) loadMonth();
+    var tabs = ["log", "cal", "dispatch"];
+    var btns = { log: tabLog, cal: tabCal, dispatch: tabDispatch };
+    var views = { log: viewLog, cal: viewCal, dispatch: viewDispatch };
+    tabs.forEach(function (t) {
+      var active = t === which;
+      btns[t].classList.toggle("is-active", active);
+      btns[t].setAttribute("aria-selected", active ? "true" : "false");
+      views[t].hidden = !active;
+    });
+    if (which === "cal" && !calLoaded) loadMonth();
+    if (which === "dispatch" && !dLoaded) loadDispatch();
     window.scrollTo(0, 0);
   }
   tabLog.addEventListener("click", function () { showTab("log"); });
   tabCal.addEventListener("click", function () { showTab("cal"); });
+  tabDispatch.addEventListener("click", function () { showTab("dispatch"); });
 
   /* ---------- default date = today ---------- */
   dateInput.value = todayStr();
@@ -660,6 +666,386 @@
     if (e.target === backdrop) closeSheet();
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && !backdrop.hidden) closeSheet();
+    if (e.key === "Escape") {
+      if (!backdrop.hidden) closeSheet();
+      if (!dFormBackdrop.hidden) closeDForm();
+      if (!dDetailBackdrop.hidden) closeDDetail();
+    }
+  });
+
+  /* ================= DISPATCH ================= */
+  var dCalGrid = document.getElementById("d-cal-grid");
+  var dCalTitle = document.getElementById("d-cal-title");
+  var dPrevBtn = document.getElementById("d-prev-month");
+  var dNextBtn = document.getElementById("d-next-month");
+  var dAddBtn = document.getElementById("d-add-btn");
+  var dDayPanel = document.getElementById("d-day-panel");
+  var dFormBackdrop = document.getElementById("dform-backdrop");
+  var dFormClose = document.getElementById("dform-close");
+  var dFormTitle = document.getElementById("dform-title");
+  var dJobForm = document.getElementById("d-job-form");
+  var dFormError = document.getElementById("d-form-error");
+  var dSubmitBtn = document.getElementById("d-submit-btn");
+  var dDetailBackdrop = document.getElementById("ddetail-backdrop");
+  var dDetailBody = document.getElementById("ddetail-body");
+  var dDetailClose = document.getElementById("ddetail-close");
+
+  var dNow = new Date();
+  var dYear = dNow.getFullYear();
+  var dMonth = dNow.getMonth();
+  var dSelectedDate = null;
+  var dJobs = [];
+  var dByDate = {};
+  var dLoaded = false;
+  var dPriority = "flexible";
+  var dEditingId = null;
+
+  function priorityLabel(p) {
+    if (p === "emergency") return "Emergency";
+    if (p === "urgent") return "Urgent";
+    return "Flexible";
+  }
+
+  function dStatusLabel(s) {
+    if (s === "done") return "Done";
+    if (s === "waiting_parts") return "Waiting on parts";
+    return "Scheduled";
+  }
+
+  function pillClass(j) {
+    if (j.status === "done") return "done";
+    return j.priority || "flexible";
+  }
+
+  dPrevBtn.addEventListener("click", function () {
+    dMonth--;
+    if (dMonth < 0) { dMonth = 11; dYear--; }
+    dSelectedDate = null;
+    loadDispatch();
+  });
+  dNextBtn.addEventListener("click", function () {
+    dMonth++;
+    if (dMonth > 11) { dMonth = 0; dYear++; }
+    dSelectedDate = null;
+    loadDispatch();
+  });
+  dAddBtn.addEventListener("click", function () { openDForm(dSelectedDate, null); });
+
+  async function loadDispatch() {
+    dLoaded = true;
+    var start = dYear + "-" + pad(dMonth + 1) + "-01";
+    var nm = dMonth + 1, ny = dYear;
+    if (nm > 11) { nm = 0; ny++; }
+    var end = ny + "-" + pad(nm + 1) + "-01";
+
+    dCalTitle.textContent = MONTHS[dMonth] + " " + dYear;
+    dCalGrid.innerHTML = '<p class="empty-day">Loading&hellip;</p>';
+    dDayPanel.innerHTML = "";
+
+    try {
+      var res = await db.from("dispatch_jobs")
+        .select("*")
+        .gte("job_date", start)
+        .lt("job_date", end)
+        .order("job_date", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(500);
+      if (res.error) throw res.error;
+      dJobs = res.data || [];
+    } catch (err) {
+      dCalGrid.innerHTML =
+        '<p class="empty-day">Couldn&rsquo;t load — check your signal and reopen the Dispatch tab.</p>';
+      return;
+    }
+
+    dByDate = {};
+    dJobs.forEach(function (j) {
+      (dByDate[j.job_date] = dByDate[j.job_date] || []).push(j);
+    });
+
+    renderDispatchGrid();
+    if (dSelectedDate && dByDate[dSelectedDate]) {
+      renderDDayPanel(dSelectedDate);
+    } else {
+      var t = todayStr();
+      if (dByDate[t]) {
+        selectDDay(t);
+      } else {
+        dSelectedDate = null;
+        renderDispatchGrid();
+        dDayPanel.innerHTML = "";
+      }
+    }
+  }
+
+  function renderDispatchGrid() {
+    var html = '<div class="cal-weekdays" role="row">' +
+      WEEKDAYS.map(function (d) { return "<span>" + d + "</span>"; }).join("") +
+      '</div><div class="cal-days">';
+
+    var first = new Date(dYear, dMonth, 1).getDay();
+    var daysInMonth = new Date(dYear, dMonth + 1, 0).getDate();
+    var t = todayStr();
+
+    for (var i = 0; i < first; i++) {
+      html += '<span class="day is-blank"></span>';
+    }
+    for (var d = 1; d <= daysInMonth; d++) {
+      var ds = dYear + "-" + pad(dMonth + 1) + "-" + pad(d);
+      var list = dByDate[ds] || [];
+      var cls = "day";
+      if (ds === t) cls += " is-today";
+      if (ds === dSelectedDate) cls += " is-selected";
+      var pills = list.slice(0, 3).map(function (j) {
+        return '<span class="pill ' + pillClass(j) + '" data-id="' + j.id + '">' +
+          esc(j.title) + "</span>";
+      }).join("");
+      if (list.length > 3) {
+        pills += '<span class="more-link">+' + (list.length - 3) + " more</span>";
+      }
+      html += '<button type="button" class="' + cls + '" data-date="' + ds + '" role="gridcell" aria-label="' +
+        esc(longDate(ds)) + (list.length ? ", " + list.length + " jobs" : "") + '">' +
+        '<span class="day-num">' + d + "</span>" + pills + "</button>";
+    }
+    html += "</div>";
+    dCalGrid.innerHTML = html;
+
+    dCalGrid.querySelectorAll(".pill").forEach(function (p) {
+      p.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        openDDetail(Number(p.getAttribute("data-id")));
+      });
+    });
+    dCalGrid.querySelectorAll(".day[data-date]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        selectDDay(btn.getAttribute("data-date"));
+      });
+    });
+  }
+
+  function selectDDay(dateStr) {
+    dSelectedDate = dateStr;
+    renderDispatchGrid();
+    renderDDayPanel(dateStr);
+  }
+
+  function renderDDayPanel(dateStr) {
+    var list = dByDate[dateStr] || [];
+    var addBtn = '<button type="button" class="copy-btn" id="d-day-add">&#43; Add job</button>';
+    if (!list.length) {
+      dDayPanel.innerHTML = '<div class="day-panel">' +
+        '<div class="day-panel-head"><h3>' + esc(longDate(dateStr)) + "</h3>" + addBtn + "</div>" +
+        '<p class="empty-day" style="padding:8px 0">No jobs scheduled.</p></div>';
+      document.getElementById("d-day-add").addEventListener("click", function () {
+        openDForm(dateStr, null);
+      });
+      return;
+    }
+    var html = '<div class="day-panel">' +
+      '<div class="day-panel-head"><h3>' + esc(longDate(dateStr)) + "</h3>" + addBtn + "</div>" +
+      '<p class="day-totals">' + list.length + (list.length === 1 ? " job" : " jobs") + "</p>";
+    list.forEach(function (j) {
+      html += '<button type="button" class="d-job-card" data-id="' + j.id + '">' +
+        '<div class="job-top"><span class="job-title">' + esc(j.title) + "</span></div>" +
+        '<div class="job-meta"><span class="pri-tag ' + pillClass(j) + '">' + esc(priorityLabel(j.priority)) + "</span>" +
+        (j.tech ? '<span class="name-tag">' + esc(firstName(j.tech)) + "</span>" : "") +
+        (j.status !== "scheduled" ?
+          '<span class="status-tag ' + (j.status === "done" ? "finished" : "ongoing") + '">' +
+          esc(dStatusLabel(j.status)) + "</span>" : "") +
+        "</div>" +
+        (j.client_name ? '<div class="job-loc">' + esc(j.client_name) + "</div>" : "") +
+        "</button>";
+    });
+    html += "</div>";
+    dDayPanel.innerHTML = html;
+    document.getElementById("d-day-add").addEventListener("click", function () {
+      openDForm(dateStr, null);
+    });
+    dDayPanel.querySelectorAll(".d-job-card").forEach(function (card) {
+      card.addEventListener("click", function () {
+        openDDetail(Number(card.getAttribute("data-id")));
+      });
+    });
+  }
+
+  /* ---------- dispatch: add/edit form ---------- */
+  var dPriBtns = Array.prototype.slice.call(dJobForm.querySelectorAll(".seg-btn"));
+  dPriBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      dPriBtns.forEach(function (b) {
+        b.classList.remove("is-active");
+        b.setAttribute("aria-pressed", "false");
+      });
+      btn.classList.add("is-active");
+      btn.setAttribute("aria-pressed", "true");
+      dPriority = btn.getAttribute("data-priority");
+    });
+  });
+
+  function setDPriority(p) {
+    dPriority = p || "flexible";
+    dPriBtns.forEach(function (b) {
+      var on = b.getAttribute("data-priority") === dPriority;
+      b.classList.toggle("is-active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  function dField(name) {
+    return dJobForm.querySelector('[data-field="' + name + '"]');
+  }
+
+  function dClearErrors() {
+    dJobForm.querySelectorAll(".field.invalid").forEach(function (el) {
+      el.classList.remove("invalid");
+    });
+    dJobForm.querySelectorAll(".error-msg").forEach(function (el) {
+      el.textContent = "";
+      el.hidden = true;
+    });
+    dFormError.textContent = "";
+    dFormError.hidden = true;
+  }
+
+  function dSetInvalid(name, message) {
+    var wrap = dField(name);
+    if (!wrap) return;
+    wrap.classList.add("invalid");
+    var msg = wrap.querySelector('[data-error-for="' + name + '"]');
+    if (msg) {
+      msg.textContent = message;
+      msg.hidden = false;
+    }
+  }
+
+  function openDForm(dateStr, job) {
+    dEditingId = job ? job.id : null;
+    dFormTitle.textContent = job ? "Edit job" : "Add job";
+    dSubmitBtn.innerHTML = job ? "Save changes" : "&#43; Schedule Job";
+    dClearErrors();
+    document.getElementById("d_title").value = job ? job.title || "" : "";
+    document.getElementById("d_client").value = job ? job.client_name || "" : "";
+    document.getElementById("d_phone").value = job ? job.phone || "" : "";
+    document.getElementById("d_address").value = job ? job.address || "" : "";
+    document.getElementById("d_tech").value = job ? job.tech || "" : "";
+    document.getElementById("d_date").value = job ? job.job_date : (dateStr || todayStr());
+    document.getElementById("d_notes").value = job ? job.notes || "" : "";
+    setDPriority(job ? job.priority : "flexible");
+    dDetailBackdrop.hidden = true;
+    dFormBackdrop.hidden = false;
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeDForm() {
+    dFormBackdrop.hidden = true;
+    if (dDetailBackdrop.hidden) document.body.style.overflow = "";
+  }
+
+  dFormClose.addEventListener("click", closeDForm);
+  dFormBackdrop.addEventListener("click", function (e) {
+    if (e.target === dFormBackdrop) closeDForm();
+  });
+
+  dJobForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    dClearErrors();
+
+    var title = document.getElementById("d_title").value.trim();
+    var date = document.getElementById("d_date").value;
+    var bad = false;
+    if (!title) { dSetInvalid("d_title", "Enter a job name."); bad = true; }
+    if (!date) { dSetInvalid("d_date", "Pick a date."); bad = true; }
+    if (bad) return;
+
+    var payload = {
+      title: title,
+      client_name: document.getElementById("d_client").value.trim() || null,
+      phone: document.getElementById("d_phone").value.trim() || null,
+      address: document.getElementById("d_address").value.trim() || null,
+      tech: document.getElementById("d_tech").value.trim() || null,
+      job_date: date,
+      priority: dPriority,
+      notes: document.getElementById("d_notes").value.trim() || null
+    };
+
+    dSubmitBtn.disabled = true;
+    dSubmitBtn.innerHTML = "Saving&hellip;";
+    try {
+      var res = dEditingId ?
+        await db.from("dispatch_jobs").update(payload).eq("id", dEditingId) :
+        await db.from("dispatch_jobs").insert(payload);
+      if (res.error) throw res.error;
+      closeDForm();
+      dSelectedDate = date;
+      await loadDispatch();
+      window.scrollTo(0, 0);
+    } catch (err) {
+      dFormError.textContent = "Couldn't save — check your signal and try again.";
+      dFormError.hidden = false;
+    } finally {
+      dSubmitBtn.disabled = false;
+      dSubmitBtn.innerHTML = dEditingId ? "Save changes" : "&#43; Schedule Job";
+    }
+  });
+
+  /* ---------- dispatch: detail sheet ---------- */
+  function openDDetail(id) {
+    var j = null;
+    dJobs.forEach(function (x) { if (x.id === id) j = x; });
+    if (!j) return;
+    var pc = pillClass(j);
+    var statusBtns = ["scheduled", "waiting_parts", "done"].map(function (s) {
+      return '<button type="button" class="d-status-btn' + (j.status === s ? " is-active" : "") +
+        '" data-status="' + s + '">' + dStatusLabel(s) + "</button>";
+    }).join("");
+    var tel = j.phone ? j.phone.replace(/[^0-9+]/g, "") : "";
+    dDetailBody.innerHTML =
+      '<h3 class="sheet-title">' + esc(j.title) + "</h3>" +
+      '<div class="sheet-row"><span class="pri-tag ' + pc + '">' + esc(priorityLabel(j.priority)) + "</span>" +
+      '<span class="status-tag' + (j.status === "done" ? " finished" : j.status === "waiting_parts" ? " ongoing" : "") + '">' +
+      esc(dStatusLabel(j.status)) + "</span></div>" +
+      (j.client_name ? '<div class="sheet-row"><span class="dim">' + esc(j.client_name) + "</span></div>" : "") +
+      (j.address ? '<div class="sheet-row"><span class="dim">' + esc(j.address) + "</span></div>" : "") +
+      '<div class="sheet-row"><span class="dim">' + esc(longDate(j.job_date)) +
+      (j.tech ? " &middot; " + esc(j.tech) : "") + "</span></div>" +
+      (j.notes ? '<div class="notes-box"><div class="notes-label">Notes</div><p>' + esc(j.notes) + "</p></div>" : "") +
+      '<div class="section-label">Status</div>' +
+      '<div class="d-status-row">' + statusBtns + "</div>" +
+      '<div class="d-actions">' +
+      (tel ? '<a class="btn-outline btn-block d-call" href="tel:' + esc(tel) + '">Call ' +
+        esc(j.client_name || "client") + "</a>" : "") +
+      '<button type="button" class="btn-outline btn-block" id="d-edit-btn">Edit job</button>' +
+      "</div>";
+    dDetailBody.querySelectorAll(".d-status-btn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        setDStatus(id, b.getAttribute("data-status"));
+      });
+    });
+    document.getElementById("d-edit-btn").addEventListener("click", function () {
+      openDForm(null, j);
+    });
+    dDetailBackdrop.hidden = false;
+    document.body.style.overflow = "hidden";
+  }
+
+  async function setDStatus(id, status) {
+    try {
+      var res = await db.from("dispatch_jobs").update({ status: status }).eq("id", id);
+      if (res.error) throw res.error;
+      await loadDispatch();
+      openDDetail(id);
+    } catch (err) {
+      // keep the sheet open; the status buttons simply won't reflect the change
+    }
+  }
+
+  function closeDDetail() {
+    dDetailBackdrop.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  dDetailClose.addEventListener("click", closeDDetail);
+  dDetailBackdrop.addEventListener("click", function (e) {
+    if (e.target === dDetailBackdrop) closeDDetail();
   });
 })();
