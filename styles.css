@@ -1,0 +1,364 @@
+/* ============================================================
+   Dutton Plumbing — Crew Log field entry app
+   Visual language matches the Crew Log Dashboard:
+   neo-brutalist industrial trade-poster — warm paper, thick
+   black rules, hard offset shadows, square corners, condensed
+   uppercase type, burnt-orange accents.
+   ============================================================ */
+
+:root {
+  --bg: #f4f1ea;
+  --panel: #fffdf8;
+  --panel2: #ece7db;
+  --ink: #1c1a17;
+  --muted: #6b665d;
+  --line: #1c1a17;
+  --accent: #e85d04;
+  --accent2: #1a7a4c;
+  --warn: #b7791f;
+  --danger: #c1121f;
+  --shadow: 4px 4px 0 #1c1a17;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161412;
+    --panel: #221f1c;
+    --panel2: #2b2723;
+    --ink: #f2ede4;
+    --muted: #a89f92;
+    --line: #f2ede4;
+    --shadow: 4px 4px 0 #000;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Barlow", system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ---------- header ---------- */
+
+.top {
+  background: var(--panel);
+  border-bottom: 3px solid var(--line);
+  padding: 22px 0 18px;
+  margin-bottom: 22px;
+}
+
+.top-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+h1 {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  font-size: clamp(40px, 11vw, 54px);
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.accent-word { color: var(--accent); }
+
+.top .sub {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.pill {
+  flex-shrink: 0;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border: 2px solid var(--line);
+  box-shadow: 3px 3px 0 var(--line);
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+/* ---------- cards ---------- */
+
+.card {
+  background: var(--panel);
+  border: 2px solid var(--line);
+  box-shadow: var(--shadow);
+  border-radius: 0;
+  padding: 22px 20px;
+  margin-bottom: 26px;
+}
+
+.card h2 {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 28px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 4px;
+}
+
+.card > .sub {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+
+/* ---------- form ---------- */
+
+.field { margin-bottom: 20px; }
+
+.f-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+input[type="text"],
+input[type="date"],
+input[type="number"],
+textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 16px; /* 16px+ stops iOS auto-zoom */
+  color: var(--ink);
+  background: var(--bg);
+  border: 2px solid var(--line);
+  border-radius: 0;
+  padding: 13px 12px;
+  margin: 0;
+}
+
+textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder { color: var(--muted); opacity: 0.8; }
+
+input:focus-visible,
+textarea:focus-visible,
+.btn:focus-visible,
+.name-card:focus-within {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* big tappable name picker */
+.name-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.name-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 104px;
+  padding: 16px 10px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  box-shadow: var(--shadow);
+  border-radius: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.name-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.name-big {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  font-size: 30px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.name-sub {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.name-card:has(input:checked) {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.name-card:has(input:checked) .name-sub { color: var(--bg); opacity: 0.75; }
+
+.name-card:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--line); }
+
+/* ---------- buttons ---------- */
+
+.btn {
+  display: block;
+  width: 100%;
+  font-family: "Barlow", sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 16px;
+  border: 2px solid var(--line);
+  border-radius: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 3px 3px 0 var(--line);
+}
+
+.btn.primary:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--line);
+}
+
+.btn.primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- errors ---------- */
+
+.error-msg {
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 6px 0 0;
+}
+
+.field.invalid input,
+.field.invalid textarea { border-color: var(--danger); }
+
+.field.invalid .name-picker .name-card { border-color: var(--danger); }
+
+.form-error {
+  border: 2px solid var(--danger);
+  box-shadow: 3px 3px 0 var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px;
+  margin-bottom: 18px;
+  background: var(--panel);
+}
+
+/* ---------- success ---------- */
+
+.success { text-align: center; }
+
+.check-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  background: var(--accent2);
+  color: #fff;
+  font-size: 38px;
+  font-weight: 700;
+  border: 2px solid var(--line);
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+
+.summary {
+  margin: 0 0 22px;
+  text-align: left;
+}
+
+.sum-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 2px solid var(--line);
+}
+
+.sum-row dt {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sum-row dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- setup notice ---------- */
+
+#setup-view code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  background: var(--panel2);
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+}
+
+/* ---------- footer ---------- */
+
+.foot {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding-bottom: 32px;
+}

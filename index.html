@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crew Log — Dutton Plumbing</title>
+<meta name="description" content="Dutton Plumbing daily crew log. Log what you did — one entry per job.">
+<meta name="theme-color" content="#f4f1ea">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <div>
+      <div class="eyebrow">Dutton Plumbing</div>
+      <h1>CREW LOG <span class="accent-word">FIELD ENTRY</span></h1>
+      <p class="sub">Log what you did today &mdash; one entry per job.</p>
+    </div>
+    <div class="pill" aria-hidden="true">No login needed</div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ ENTRY FORM ============ -->
+  <section class="card" id="form-view" aria-labelledby="form-heading">
+    <h2 id="form-heading">Log a job</h2>
+    <p class="sub">Fill it out at the job site. Takes 30 seconds.</p>
+
+    <form id="crew-form" novalidate>
+
+      <div class="field" data-field="person">
+        <span class="f-label" id="person-label">Your name</span>
+        <div class="name-picker" role="radiogroup" aria-labelledby="person-label">
+          <label class="name-card">
+            <input type="radio" name="person" value="Kyle Jelevach">
+            <span class="name-big">Kyle</span>
+            <span class="name-sub">Jelevach</span>
+          </label>
+          <label class="name-card">
+            <input type="radio" name="person" value="Caleb Huston">
+            <span class="name-big">Caleb</span>
+            <span class="name-sub">Huston</span>
+          </label>
+        </div>
+        <p class="error-msg" data-error-for="person" hidden></p>
+      </div>
+
+      <div class="field" data-field="date">
+        <label class="f-label" for="date">Date worked</label>
+        <input type="date" id="date" name="date" autocomplete="off">
+        <p class="error-msg" data-error-for="date" hidden></p>
+      </div>
+
+      <div class="field" data-field="customer">
+        <label class="f-label" for="customer">Customer / Site</label>
+        <input type="text" id="customer" name="customer" placeholder="e.g. W Hotel Scottsdale" autocomplete="off" maxlength="120">
+        <p class="error-msg" data-error-for="customer" hidden></p>
+      </div>
+
+      <div class="field" data-field="description">
+        <label class="f-label" for="description">Work performed</label>
+        <textarea id="description" name="description" rows="4" placeholder="What did you do?" maxlength="2000"></textarea>
+        <p class="error-msg" data-error-for="description" hidden></p>
+      </div>
+
+      <div class="field" data-field="hours">
+        <label class="f-label" for="hours">Hours</label>
+        <input type="number" id="hours" name="hours" inputmode="decimal" step="0.25" min="0" max="24" placeholder="e.g. 2.5" autocomplete="off">
+        <p class="error-msg" data-error-for="hours" hidden></p>
+      </div>
+
+      <div class="form-error" id="form-error" role="alert" hidden></div>
+
+      <button type="submit" class="btn primary" id="submit-btn">Log this job</button>
+    </form>
+  </section>
+
+  <!-- ============ SUCCESS ============ -->
+  <section class="card success" id="success-view" aria-labelledby="success-heading" hidden>
+    <div class="check-badge" aria-hidden="true">&#10003;</div>
+    <h2 id="success-heading">Logged!</h2>
+    <p class="sub">Nice work. Here's what went in:</p>
+    <dl class="summary">
+      <div class="sum-row"><dt>Name</dt><dd id="sum-name"></dd></div>
+      <div class="sum-row"><dt>Date</dt><dd id="sum-date"></dd></div>
+      <div class="sum-row"><dt>Customer</dt><dd id="sum-customer"></dd></div>
+      <div class="sum-row"><dt>Hours</dt><dd id="sum-hours"></dd></div>
+    </dl>
+    <button type="button" class="btn primary" id="another-btn">Log another job</button>
+  </section>
+
+  <!-- ============ NOT CONFIGURED YET ============ -->
+  <section class="card" id="setup-view" aria-labelledby="setup-heading" hidden>
+    <h2 id="setup-heading">Not connected yet</h2>
+    <p class="sub">This page isn't linked to the database. Whoever set it up
+    needs to finish <strong>step 3 of SETUP.md</strong> (paste the Supabase
+    URL and anon key into <code>config.js</code>), then re-upload the files.</p>
+  </section>
+
+</main>
+
+<footer class="wrap foot">
+  Dutton Plumbing &middot; Crew Log
+</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
