@@ -82,6 +82,19 @@
         <p class="error-msg" data-error-for="description" hidden></p>
       </div>
 
+      <div class="field" data-field="photos">
+        <span class="f-label">Job photos</span>
+        <div class="photo-zone" id="photo-zone" role="button" tabindex="0" aria-label="Add job photos">
+          <div class="photo-zone-inner">
+            <span class="photo-icon">&#128247;</span>
+            <span class="photo-hint">Tap to add photos (up to 6)</span>
+          </div>
+        </div>
+        <input type="file" id="photo-input" accept="image/*" multiple hidden>
+        <div class="photo-thumbs" id="photo-thumbs"></div>
+        <p class="error-msg" data-error-for="photos" hidden></p>
+      </div>
+
       <div class="form-error" id="form-error" role="alert" hidden></div>
 
       <button type="submit" class="btn primary" id="submit-btn">&#43; Log Job</button>
@@ -109,6 +122,7 @@
     <div class="stats" id="stats">
       <div class="stat-card"><div class="stat-num" id="stat-hours">0</div><div class="stat-label" id="stat-hours-label">Oct hrs</div></div>
       <div class="stat-card"><div class="stat-num" id="stat-jobs">0</div><div class="stat-label">jobs logged</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-photos">0</div><div class="stat-label">photos</div></div>
     </div>
 
     <div class="card cal-card">

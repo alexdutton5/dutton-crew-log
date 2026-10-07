@@ -29,6 +29,11 @@
   var hoursInput = document.getElementById("hours");
   var segBtns = Array.prototype.slice.call(document.querySelectorAll(".seg-btn"));
   var jobStatus = "finished";
+  var photoZone = document.getElementById("photo-zone");
+  var photoInput = document.getElementById("photo-input");
+  var photoThumbs = document.getElementById("photo-thumbs");
+  var selectedPhotos = [];
+  var MAX_PHOTOS = 6;
 
   var calGrid = document.getElementById("cal-grid");
   var calTitle = document.getElementById("cal-title");
@@ -40,6 +45,7 @@
   var statHours = document.getElementById("stat-hours");
   var statHoursLabel = document.getElementById("stat-hours-label");
   var statJobs = document.getElementById("stat-jobs");
+  var statPhotos = document.getElementById("stat-photos");
 
   var backdrop = document.getElementById("sheet-backdrop");
   var sheetBody = document.getElementById("sheet-body");
@@ -150,6 +156,109 @@
     });
   });
 
+  /* ---------- photos: pick, preview, compress, upload ---------- */
+  function clearPhotoError() {
+    var msg = form.querySelector('[data-error-for="photos"]');
+    if (msg) { msg.textContent = ""; msg.hidden = true; }
+    fieldEl("photos").classList.remove("invalid");
+  }
+
+  function renderThumbs() {
+    photoThumbs.innerHTML = "";
+    selectedPhotos.forEach(function (file, idx) {
+      var url = URL.createObjectURL(file);
+      var d = document.createElement("div");
+      d.className = "photo-thumb";
+      d.innerHTML = '<img src="' + url + '" alt="Job photo ' + (idx + 1) + '">' +
+        '<button type="button" class="thumb-remove" data-idx="' + idx + '" aria-label="Remove photo">&times;</button>';
+      photoThumbs.appendChild(d);
+    });
+    photoThumbs.querySelectorAll(".thumb-remove").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        selectedPhotos.splice(Number(btn.getAttribute("data-idx")), 1);
+        renderThumbs();
+      });
+    });
+    photoZone.querySelector(".photo-hint").textContent =
+      selectedPhotos.length === 0 ? "Tap to add photos (up to 6)" :
+      selectedPhotos.length + " photo" + (selectedPhotos.length === 1 ? "" : "s") + " — tap to add more";
+  }
+
+  photoZone.addEventListener("click", function () { photoInput.click(); });
+  photoZone.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      photoInput.click();
+    }
+  });
+
+  photoInput.addEventListener("change", function () {
+    clearPhotoError();
+    var files = Array.prototype.slice.call(photoInput.files || []);
+    files.forEach(function (f) {
+      if (selectedPhotos.length < MAX_PHOTOS && f.type.indexOf("image/") === 0) {
+        selectedPhotos.push(f);
+      }
+    });
+    photoInput.value = "";
+    renderThumbs();
+  });
+
+  function compressImage(file) {
+    return new Promise(function (resolve, reject) {
+      var objUrl = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var maxDim = 1600;
+          var w = img.width, h = img.height;
+          if (Math.max(w, h) > maxDim) {
+            var s = maxDim / Math.max(w, h);
+            w = Math.round(w * s);
+            h = Math.round(h * s);
+          }
+          var canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(objUrl);
+          canvas.toBlob(function (blob) {
+            if (blob) resolve(blob);
+            else reject(new Error("compress"));
+          }, "image/jpeg", 0.82);
+        } catch (err) {
+          URL.revokeObjectURL(objUrl);
+          reject(err);
+        }
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(objUrl);
+        reject(new Error("load"));
+      };
+      img.src = objUrl;
+    });
+  }
+
+  function batchId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+
+  async function uploadPhotos(files) {
+    var urls = [];
+    var id = batchId();
+    for (var i = 0; i < files.length; i++) {
+      var blob = await compressImage(files[i]);
+      var path = id + "/photo-" + Date.now() + "-" + i + ".jpg";
+      var up = await db.storage.from("crew-photos").upload(path, blob, { contentType: "image/jpeg" });
+      if (up.error) throw new Error("photos");
+      var pub = db.storage.from("crew-photos").getPublicUrl(path);
+      urls.push(pub.data.publicUrl);
+    }
+    return urls;
+  }
+
   /* ---------- form validation ---------- */
   function fieldEl(name) {
     return form.querySelector('[data-field="' + name + '"]');
@@ -223,9 +332,14 @@
     }
 
     submitBtn.disabled = true;
-    submitBtn.innerHTML = "Sending&hellip;";
 
     try {
+      var photoUrls = [];
+      if (selectedPhotos.length > 0) {
+        submitBtn.innerHTML = "Uploading photos&hellip;";
+        photoUrls = await uploadPhotos(selectedPhotos);
+      }
+      submitBtn.innerHTML = "Sending&hellip;";
       var res = await db.from("crew_logs").insert({
         person: result.values.person,
         date: result.values.date,
@@ -233,9 +347,12 @@
         location: result.values.location || null,
         description: result.values.description,
         hours: result.values.hours,
-        status: result.values.status
+        status: result.values.status,
+        photo_urls: photoUrls
       });
       if (res.error) throw res.error;
+      selectedPhotos = [];
+      renderThumbs();
       if (calLoaded) {
         var parts = result.values.date.split("-");
         if (Number(parts[0]) === calYear && Number(parts[1]) - 1 === calMonth) {
@@ -244,9 +361,13 @@
       }
       showSuccess(result.values);
     } catch (err) {
-      formError.textContent =
-        "Couldn't save — check your signal and tap + Log Job again. Your entry is still here.";
-      formError.hidden = false;
+      if (err && err.message === "photos") {
+        setInvalid("photos", "Photo upload failed — check your signal and try again.");
+      } else {
+        formError.textContent =
+          "Couldn't save — check your signal and tap + Log Job again. Your entry is still here.";
+        formError.hidden = false;
+      }
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerHTML = "&#43; Log Job";
@@ -272,6 +393,8 @@
     locationInput.value = "";
     descriptionInput.value = "";
     hoursInput.value = "";
+    selectedPhotos = [];
+    renderThumbs();
     clearErrors();
     formError.textContent = "";
     formError.hidden = true;
@@ -318,7 +441,7 @@
     try {
       var res = await db
         .from("crew_logs")
-        .select("id,person,date,job_name,location,description,hours,status")
+        .select("id,person,date,job_name,location,description,hours,status,photo_urls")
         .gte("date", start)
         .lt("date", end)
         .order("date", { ascending: true })
@@ -334,13 +457,16 @@
 
     byDate = {};
     var totalHours = 0;
+    var totalPhotos = 0;
     monthEntries.forEach(function (e) {
       (byDate[e.date] = byDate[e.date] || []).push(e);
       totalHours += Number(e.hours) || 0;
+      totalPhotos += (e.photo_urls && e.photo_urls.length) || 0;
     });
 
     statHours.textContent = Math.round(totalHours * 100) / 100;
     statJobs.textContent = monthEntries.length;
+    statPhotos.textContent = totalPhotos;
 
     renderGrid();
     var t = todayStr();
@@ -418,11 +544,13 @@
 
     list.forEach(function (e) {
       var pc = personClass(e.person);
+      var photoCount = (e.photo_urls && e.photo_urls.length) ?
+        '<span class="photo-count">&#128247; ' + e.photo_urls.length + "</span>" : "";
       html += '<button type="button" class="job-card st-' + pc + '" data-id="' + e.id + '">' +
         '<div class="job-top"><span class="job-title">' + esc(e.job_name || e.customer || "Job") + "</span>" +
         '<span class="job-hours">' + fmtHours(e.hours) + "</span></div>" +
         '<div class="job-meta"><span class="name-tag ' + (pc === "kyle" || pc === "caleb" ? pc : "") + '">' +
-        esc(firstName(e.person)) + "</span>" + statusBadge(e.status) + "</div>" +
+        esc(firstName(e.person)) + "</span>" + statusBadge(e.status) + photoCount + "</div>" +
         (e.location ? '<div class="job-loc">' + esc(e.location) + "</div>" : "") +
         (e.description ? '<p class="job-desc">' + esc(e.description) + "</p>" : "") +
         "</button>";
@@ -480,10 +608,11 @@
   }
 
   exportBtn.addEventListener("click", function () {
-    var rows = [["Date", "Technician", "Job Name", "Location", "Status", "Hours", "Work Performed"]];
+    var rows = [["Date", "Technician", "Job Name", "Location", "Status", "Hours", "Photos", "Work Performed"]];
     monthEntries.forEach(function (e) {
       rows.push([e.date, e.person, e.job_name || "", e.location || "",
-        e.status === "ongoing" ? "Ongoing" : "Finished", e.hours, e.description || ""]);
+        e.status === "ongoing" ? "Ongoing" : "Finished", e.hours,
+        (e.photo_urls || []).join("; "), e.description || ""]);
     });
     var csv = rows.map(function (r) { return r.map(csvCell).join(","); }).join("\n");
     var blob = new Blob([csv], { type: "text/csv" });
@@ -498,6 +627,14 @@
   /* ---------- job detail sheet ---------- */
   function openSheet(e) {
     var pc = personClass(e.person);
+    var photosHtml = "";
+    if (e.photo_urls && e.photo_urls.length) {
+      photosHtml = '<div class="section-label">Photos</div><div class="sheet-photos">' +
+        e.photo_urls.map(function (u) {
+          return '<a href="' + esc(u) + '" target="_blank" rel="noopener"><img src="' +
+            esc(u) + '" alt="Job photo" loading="lazy"></a>';
+        }).join("") + "</div>";
+    }
     sheetBody.innerHTML =
       '<h3 class="sheet-title">' + esc(e.job_name || e.customer || "Job") + "</h3>" +
       '<div class="sheet-row"><span class="hours-big">' + fmtHours(e.hours) + "</span>" +
@@ -507,7 +644,8 @@
       (e.location ? " &middot; " + esc(e.location) : "") + "</span></div>" +
       (e.description ?
         '<div class="notes-box"><div class="notes-label">Work performed</div><p>' +
-        esc(e.description) + "</p></div>" : "");
+        esc(e.description) + "</p></div>" : "") +
+      photosHtml;
     backdrop.hidden = false;
     document.body.style.overflow = "hidden";
   }

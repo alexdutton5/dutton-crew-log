@@ -747,3 +747,117 @@ textarea:focus-visible,
   font-weight: 600;
   padding: 20px 0;
 }
+
+/* ---------- job photos ---------- */
+
+.photo-zone {
+  border: 2px dashed var(--input-line);
+  border-radius: 12px;
+  background: var(--input-bg);
+  padding: 22px 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.photo-zone:active { background: var(--card2); }
+
+.photo-zone-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.photo-icon { font-size: 28px; }
+
+.photo-hint {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.photo-thumbs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.photo-thumbs:empty { margin-top: 0; }
+
+.photo-thumb {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--card2);
+}
+
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 16px 0 8px;
+}
+
+.sheet-photos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.sheet-photos a {
+  display: block;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  aspect-ratio: 1;
+  background: var(--card2);
+}
+
+.sheet-photos img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* three stat cards */
+.stats { grid-template-columns: 1fr 1fr 1fr; }
