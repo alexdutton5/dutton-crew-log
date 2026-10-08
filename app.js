@@ -371,12 +371,12 @@
         setInvalid("photos", "Photo upload failed — check your signal and try again.");
       } else {
         formError.textContent =
-          "Couldn't save — check your signal and tap + Log Job again. Your entry is still here.";
+          "Couldn't save — check your signal and tap Log Hours again. Your entry is still here.";
         formError.hidden = false;
       }
     } finally {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = "&#43; Log Job";
+      submitBtn.innerHTML = "Log Hours";
     }
   });
 
@@ -457,7 +457,7 @@
       monthEntries = res.data || [];
     } catch (err) {
       calGrid.innerHTML =
-        '<p class="empty-day">Couldn&rsquo;t load — check your signal and reopen the Calendar tab.</p>';
+        '<p class="empty-day">Couldn&rsquo;t load — check your signal and reopen the History tab.</p>';
       return;
     }
 
@@ -780,7 +780,7 @@
       dJobs = res.data || [];
     } catch (err) {
       dCalGrid.innerHTML =
-        '<p class="empty-day">Couldn&rsquo;t load — check your signal and reopen the Dispatch tab.</p>';
+        '<p class="empty-day">Couldn&rsquo;t load — check your signal and reopen the Calendar tab.</p>';
       return;
     }
 
