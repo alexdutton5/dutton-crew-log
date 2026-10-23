@@ -651,7 +651,11 @@
       (e.description ?
         '<div class="notes-box"><div class="notes-label">Work performed</div><p>' +
         esc(e.description) + "</p></div>" : "") +
-      photosHtml;
+      photosHtml +
+      '<div class="d-actions"><button type="button" class="btn-outline btn-block" id="edit-entry-btn">Edit entry</button></div>';
+    document.getElementById("edit-entry-btn").addEventListener("click", function () {
+      openEditForm(e);
+    });
     backdrop.hidden = false;
     document.body.style.overflow = "hidden";
   }
@@ -668,8 +672,141 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       if (!backdrop.hidden) closeSheet();
+      if (!eFormBackdrop.hidden) closeEditForm();
       if (!dFormBackdrop.hidden) closeDForm();
       if (!dDetailBackdrop.hidden) closeDDetail();
+    }
+  });
+
+  /* ---------- edit entry ---------- */
+  var eFormBackdrop = document.getElementById("eform-backdrop");
+  var eFormClose = document.getElementById("eform-close");
+  var eForm = document.getElementById("e-form");
+  var eFormError = document.getElementById("e-form-error");
+  var eSubmitBtn = document.getElementById("e-submit-btn");
+  var eEditingId = null;
+  var eStatus = "finished";
+  var eSegBtns = Array.prototype.slice.call(
+    eForm.querySelectorAll(".seg-btn"));
+
+  eSegBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      setEStatus(btn.getAttribute("data-estatus"));
+    });
+  });
+
+  function setEStatus(s) {
+    eStatus = s === "ongoing" ? "ongoing" : "finished";
+    eSegBtns.forEach(function (b) {
+      var on = b.getAttribute("data-estatus") === eStatus;
+      b.classList.toggle("is-active", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  function eField(name) {
+    return eForm.querySelector('[data-field="' + name + '"]');
+  }
+
+  function eClearErrors() {
+    eForm.querySelectorAll(".field.invalid").forEach(function (el) {
+      el.classList.remove("invalid");
+    });
+    eForm.querySelectorAll(".error-msg").forEach(function (el) {
+      el.textContent = "";
+      el.hidden = true;
+    });
+    eFormError.textContent = "";
+    eFormError.hidden = true;
+  }
+
+  function eSetInvalid(name, message) {
+    var wrap = eField(name);
+    if (!wrap) return;
+    wrap.classList.add("invalid");
+    var msg = wrap.querySelector('[data-error-for="' + name + '"]');
+    if (msg) {
+      msg.textContent = message;
+      msg.hidden = false;
+    }
+  }
+
+  function openEditForm(entry) {
+    eEditingId = entry.id;
+    eClearErrors();
+    document.getElementById("e_date").value = entry.date || "";
+    document.getElementById("e_person").value = entry.person || "";
+    document.getElementById("e_job_name").value = entry.job_name || "";
+    document.getElementById("e_location").value = entry.location || "";
+    document.getElementById("e_hours").value =
+      entry.hours != null ? entry.hours : "";
+    document.getElementById("e_description").value = entry.description || "";
+    setEStatus(entry.status);
+    closeSheet();
+    eFormBackdrop.hidden = false;
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeEditForm() {
+    eFormBackdrop.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  eFormClose.addEventListener("click", closeEditForm);
+  eFormBackdrop.addEventListener("click", function (e) {
+    if (e.target === eFormBackdrop) closeEditForm();
+  });
+
+  eForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    eClearErrors();
+
+    var person = document.getElementById("e_person").value.trim();
+    var date = document.getElementById("e_date").value;
+    var jobName = document.getElementById("e_job_name").value.trim();
+    var location = document.getElementById("e_location").value.trim();
+    var description = document.getElementById("e_description").value.trim();
+    var hoursRaw = document.getElementById("e_hours").value.trim();
+    var hours = parseFloat(hoursRaw);
+
+    var bad = false;
+    if (!person) { eSetInvalid("e_person", "Enter your name."); bad = true; }
+    if (!date) { eSetInvalid("e_date", "Pick the date you worked."); bad = true; }
+    if (!jobName) { eSetInvalid("e_job_name", "Enter a job name."); bad = true; }
+    if (!description) { eSetInvalid("e_description", "Say what you did."); bad = true; }
+    if (hoursRaw === "" || isNaN(hours)) {
+      eSetInvalid("e_hours", "Enter your hours.");
+      bad = true;
+    } else if (hours <= 0 || hours >= 24) {
+      eSetInvalid("e_hours", "Hours must be more than 0 and less than 24.");
+      bad = true;
+    }
+    if (bad) return;
+
+    eSubmitBtn.disabled = true;
+    eSubmitBtn.innerHTML = "Saving&hellip;";
+    try {
+      var res = await db.from("crew_logs").update({
+        person: person,
+        date: date,
+        job_name: jobName,
+        location: location || null,
+        description: description,
+        hours: hours,
+        status: eStatus
+      }).eq("id", eEditingId);
+      if (res.error) throw res.error;
+      closeEditForm();
+      await loadMonth();
+      if (byDate[date]) selectDay(date);
+      window.scrollTo(0, 0);
+    } catch (err) {
+      eFormError.textContent =
+        "Couldn't save — check your signal and tap Save changes again.";
+      eFormError.hidden = false;
+    } finally {
+      eSubmitBtn.disabled = false;
+      eSubmitBtn.innerHTML = "Save changes";
     }
   });
 

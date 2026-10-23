@@ -177,6 +177,61 @@
   </div>
 </div>
 
+<!-- ============ EDIT ENTRY SHEET ============ -->
+<div class="sheet-backdrop" id="eform-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="eform-title">
+    <div class="sheet-header">
+      <span id="eform-title">Edit entry</span>
+      <button type="button" class="sheet-close" id="eform-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="sheet-body">
+      <form id="e-form" novalidate>
+        <div class="form-row">
+          <div class="field" data-field="e_date">
+            <label class="f-label" for="e_date">Date</label>
+            <input type="date" id="e_date" autocomplete="off">
+            <p class="error-msg" data-error-for="e_date" hidden></p>
+          </div>
+          <div class="field" data-field="e_person">
+            <label class="f-label" for="e_person">Technician</label>
+            <input type="text" id="e_person" maxlength="60" autocomplete="off">
+            <p class="error-msg" data-error-for="e_person" hidden></p>
+          </div>
+        </div>
+        <div class="field" data-field="e_job_name">
+          <label class="f-label" for="e_job_name">Job name</label>
+          <input type="text" id="e_job_name" maxlength="120" autocomplete="off">
+          <p class="error-msg" data-error-for="e_job_name" hidden></p>
+        </div>
+        <div class="field" data-field="e_location">
+          <label class="f-label" for="e_location">Location</label>
+          <input type="text" id="e_location" maxlength="120" autocomplete="off">
+        </div>
+        <div class="field" data-field="e_hours">
+          <label class="f-label" for="e_hours">Hours spent</label>
+          <input type="number" id="e_hours" inputmode="decimal" step="0.25" min="0" max="24" autocomplete="off">
+          <p class="error-msg" data-error-for="e_hours" hidden></p>
+        </div>
+        <div class="field" data-field="e_status">
+          <span class="f-label">Job status</span>
+          <div class="status-seg" role="radiogroup" aria-label="Job status">
+            <button type="button" class="seg-btn" data-estatus="finished" aria-pressed="false">&#10003; Finished</button>
+            <button type="button" class="seg-btn" data-estatus="ongoing" aria-pressed="false">&#9719; Ongoing</button>
+          </div>
+        </div>
+        <div class="field" data-field="e_description">
+          <label class="f-label" for="e_description">What did you do?</label>
+          <textarea id="e_description" rows="4" maxlength="2000"></textarea>
+          <p class="error-msg" data-error-for="e_description" hidden></p>
+        </div>
+        <p class="sub">Photos stay attached as-is.</p>
+        <div class="form-error" id="e-form-error" role="alert" hidden></div>
+        <button type="submit" class="btn primary" id="e-submit-btn">Save changes</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- ============ DISPATCH: ADD/EDIT JOB SHEET ============ -->
 <div class="sheet-backdrop" id="dform-backdrop" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dform-title">
