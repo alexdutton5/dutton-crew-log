@@ -2034,7 +2034,14 @@
         err.hidden = true;
         okEl.textContent = "Punch fixed.";
         okEl.hidden = false;
-        if (ckPerson === person) { ckOpenPunch = await latestPunch(person); }
+        if (ckPerson === person) {
+          ckOpenPunch = await latestPunch(person);
+          var shift = lsGet(LS_SHIFT);
+          if (shift && ckOpenPunch && ckOpenPunch.kind === "in") {
+            lsSet(LS_SHIFT, { person: person, since: ckOpenPunch.punched_at });
+          }
+          if (!ckMainCard.hidden) renderMainCard();
+        }
       });
     });
   }
@@ -2070,7 +2077,10 @@
     okEl.hidden = false;
     document.getElementById("p_note").value = "";
     if (ckPerson === person) {
-      try { ckOpenPunch = await latestPunch(person); } catch (e3) { /* keep old state */ }
+      try {
+        ckOpenPunch = await latestPunch(person);
+        if (!ckMainCard.hidden) renderMainCard();
+      } catch (e3) { /* keep old state */ }
     }
     loadTodayPunches();
   });
