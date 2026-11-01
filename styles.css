@@ -1005,3 +1005,189 @@ a.d-call {
   border-radius: 8px;
   margin-bottom: 0;
 }
+
+/* ---------- clock (PIN in/out) ---------- */
+
+.clock-card .btn-outline { margin-top: 10px; }
+
+.clock-who {
+  font-size: 21px;
+  font-weight: 800;
+  text-align: center;
+  margin: 6px 0 10px;
+}
+
+.clock-status {
+  text-align: center;
+  color: var(--muted);
+  font-size: 17px;
+  margin: 4px 0;
+}
+
+.clock-elapsed {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 800;
+  margin: 6px 0 14px;
+}
+
+.pin-dots {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin: 14px 0 6px;
+}
+
+.pin-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--input-line);
+}
+
+.pin-dot.filled {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+#pin-error { text-align: center; }
+
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  max-width: 290px;
+  margin: 16px auto 20px;
+}
+
+.pin-key {
+  padding: 15px 0;
+  font-size: 23px;
+  font-weight: 700;
+  font-family: inherit;
+  background: var(--card2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pin-key:active { background: var(--blue-tint); }
+.pin-key-alt { color: var(--muted); font-size: 17px; }
+
+.clock-big {
+  background: #16a34a;
+  color: #fff;
+  font-size: 23px;
+  padding: 24px 15px;
+  border-radius: 14px;
+  margin: 8px 0 4px;
+}
+
+.clock-big.is-out { background: #dc2626; }
+.clock-big:disabled { opacity: 0.55; }
+
+input[type="password"],
+input[type="datetime-local"],
+select {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--input-bg);
+  border: 1px solid var(--input-line);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+}
+
+/* clock-out day accounting */
+
+.co-entry {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--card2);
+}
+
+.co-entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.co-entry-kind { font-weight: 700; }
+
+.co-entry .thumb-remove {
+  position: static;
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.co-entry textarea { min-height: 56px; }
+
+.co-add-row {
+  display: flex;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+
+.co-add-row .btn-outline {
+  flex: 1;
+  margin-top: 0;
+  padding: 11px;
+}
+
+.co-lunch {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 10px 0;
+  cursor: pointer;
+}
+
+.co-lunch input {
+  width: 24px;
+  height: 24px;
+  accent-color: var(--blue);
+}
+
+.co-tally {
+  font-size: 17px;
+  font-weight: 700;
+  text-align: center;
+  margin: 12px 0;
+}
+
+.co-tally.ok { color: #4ade80; }
+
+/* fix-a-punch sheet */
+
+.punch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.punch-kind {
+  min-width: 78px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.punch-time { flex: 1; padding: 10px; }

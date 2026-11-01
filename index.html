@@ -26,7 +26,8 @@
   </div>
   <nav class="tabbar" aria-label="Views">
     <div class="wrap tabbar-inner">
-      <button type="button" class="tab is-active" id="tab-log" aria-selected="true">Log Hours</button>
+      <button type="button" class="tab is-active" id="tab-clock" aria-selected="true">&#128339; Clock</button>
+      <button type="button" class="tab" id="tab-log" aria-selected="false">Log Hours</button>
       <button type="button" class="tab" id="tab-cal" aria-selected="false">History</button>
       <button type="button" class="tab" id="tab-dispatch" aria-selected="false">&#128197; Calendar</button>
     </div>
@@ -35,8 +36,97 @@
 
 <main class="wrap">
 
+  <!-- ============ CLOCK ============ -->
+  <section id="view-clock" aria-labelledby="clock-heading">
+    <h2 id="clock-heading" class="sr-only">Clock in and out</h2>
+
+    <div class="d-banner" id="clock-banner" hidden></div>
+
+    <!-- PIN pad -->
+    <div class="card clock-card" id="clock-pin-card">
+      <p class="clock-who">Enter your PIN</p>
+      <div class="pin-dots" id="pin-dots" aria-hidden="true">
+        <span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span>
+      </div>
+      <p class="error-msg" id="pin-error" hidden></p>
+      <div class="pin-pad" id="pin-pad">
+        <button type="button" class="pin-key" data-key="1">1</button>
+        <button type="button" class="pin-key" data-key="2">2</button>
+        <button type="button" class="pin-key" data-key="3">3</button>
+        <button type="button" class="pin-key" data-key="4">4</button>
+        <button type="button" class="pin-key" data-key="5">5</button>
+        <button type="button" class="pin-key" data-key="6">6</button>
+        <button type="button" class="pin-key" data-key="7">7</button>
+        <button type="button" class="pin-key" data-key="8">8</button>
+        <button type="button" class="pin-key" data-key="9">9</button>
+        <button type="button" class="pin-key pin-key-alt" data-key="clear">C</button>
+        <button type="button" class="pin-key" data-key="0">0</button>
+        <button type="button" class="pin-key pin-key-alt" data-key="back">&#9003;</button>
+      </div>
+      <button type="button" class="btn-outline btn-block" id="pin-setup-link">First time? Set your PIN</button>
+      <button type="button" class="btn-outline btn-block" id="pin-manual-link">Forgot to clock in/out? Fix a punch</button>
+    </div>
+
+    <!-- Set PIN -->
+    <div class="card clock-card" id="clock-setup-card" hidden>
+      <p class="clock-who">Set your PIN</p>
+      <div class="field">
+        <label class="f-label" for="setup-person">Your name</label>
+        <select id="setup-person"></select>
+      </div>
+      <div class="field">
+        <label class="f-label" for="setup-pin">New 4-digit PIN</label>
+        <input type="password" id="setup-pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="&bull;&bull;&bull;&bull;">
+      </div>
+      <div class="field">
+        <label class="f-label" for="setup-pin2">Type it again</label>
+        <input type="password" id="setup-pin2" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="&bull;&bull;&bull;&bull;">
+      </div>
+      <p class="error-msg" id="setup-error" hidden></p>
+      <button type="button" class="btn primary btn-block" id="setup-save">Save PIN</button>
+      <button type="button" class="btn-outline btn-block" id="setup-cancel">Cancel</button>
+    </div>
+
+    <!-- Identified: in/out -->
+    <div class="card clock-card" id="clock-main-card" hidden>
+      <p class="clock-who" id="clock-name"></p>
+      <p class="clock-status" id="clock-status"></p>
+      <p class="clock-elapsed" id="clock-elapsed"></p>
+      <button type="button" class="btn clock-big" id="clock-action-btn">Clock In</button>
+      <button type="button" class="btn-outline btn-block" id="clock-manual-link2">Fix a punch</button>
+      <button type="button" class="btn-outline btn-block" id="clock-switch">Not you? Switch</button>
+    </div>
+
+    <!-- Clock out: account for the day -->
+    <div class="card clock-card" id="clock-out-card" hidden>
+      <p class="clock-who">Clock out &mdash; <span id="co-name"></span></p>
+      <p class="clock-status" id="co-shift"></p>
+      <p class="sub" id="co-existing" hidden></p>
+      <div id="co-entries"></div>
+      <div class="co-add-row">
+        <button type="button" class="btn-outline" id="co-add-job">+ Add job</button>
+        <button type="button" class="btn-outline" id="co-add-drive">+ Drive time</button>
+      </div>
+      <label class="co-lunch">
+        <input type="checkbox" id="co-lunch"> I took a 30-minute lunch
+      </label>
+      <p class="co-tally" id="co-tally"></p>
+      <p class="error-msg" id="co-error" hidden></p>
+      <button type="button" class="btn primary btn-block" id="co-finish" disabled>Finish clock out</button>
+      <button type="button" class="btn-outline btn-block" id="co-cancel">Cancel</button>
+    </div>
+
+    <!-- Done -->
+    <div class="card success-card" id="clock-done-card" hidden>
+      <div class="check-badge" aria-hidden="true">&#10003;</div>
+      <h2 id="clock-done-title">Clocked in</h2>
+      <p class="sub" id="clock-done-sub"></p>
+      <button type="button" class="btn primary btn-block" id="clock-done-btn">Done</button>
+    </div>
+  </section>
+
   <!-- ============ LOG JOB ============ -->
-  <section id="view-log" aria-labelledby="form-heading">
+  <section id="view-log" aria-labelledby="form-heading" hidden>
     <form id="crew-form" class="card form-card" novalidate>
       <div class="form-row">
         <div class="field" data-field="date">
@@ -303,6 +393,48 @@
       <button type="button" class="sheet-close" id="ddetail-close" aria-label="Close">&#10005;</button>
     </div>
     <div class="sheet-body" id="ddetail-body"></div>
+  </div>
+</div>
+
+<!-- ============ FIX A PUNCH SHEET ============ -->
+<div class="sheet-backdrop" id="punch-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="punch-title">
+    <div class="sheet-header">
+      <span id="punch-title">Fix a punch</span>
+      <button type="button" class="sheet-close" id="punch-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="sheet-body">
+      <form id="punch-form" novalidate>
+        <div class="field">
+          <label class="f-label" for="p_person">Your name</label>
+          <select id="p_person"></select>
+        </div>
+        <div class="field">
+          <label class="f-label" for="p_pin">Your PIN</label>
+          <input type="password" id="p_pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="&bull;&bull;&bull;&bull;">
+        </div>
+        <div id="punch-today"></div>
+        <div class="field">
+          <span class="f-label">Add a missed punch</span>
+          <div class="status-seg" role="radiogroup" aria-label="Punch type">
+            <button type="button" class="seg-btn is-active" data-pkind="in" aria-pressed="true">Clock in</button>
+            <button type="button" class="seg-btn" data-pkind="out" aria-pressed="false">Clock out</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="f-label" for="p_when">Date &amp; time</label>
+          <input type="datetime-local" id="p_when">
+        </div>
+        <div class="field">
+          <label class="f-label" for="p_note">Note (optional)</label>
+          <input type="text" id="p_note" maxlength="120" placeholder="e.g. Forgot this morning" autocomplete="off">
+        </div>
+        <p class="sub">Hand-entered punches are flagged as manual.</p>
+        <p class="error-msg" id="punch-error" hidden></p>
+        <p class="sub" id="punch-ok" hidden></p>
+        <button type="submit" class="btn primary" id="punch-save">Add punch</button>
+      </form>
+    </div>
   </div>
 </div>
 

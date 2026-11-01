@@ -8,9 +8,11 @@
   "use strict";
 
   /* ---------- elements ---------- */
+  var tabClock = document.getElementById("tab-clock");
   var tabLog = document.getElementById("tab-log");
   var tabCal = document.getElementById("tab-cal");
   var tabDispatch = document.getElementById("tab-dispatch");
+  var viewClock = document.getElementById("view-clock");
   var viewLog = document.getElementById("view-log");
   var viewCal = document.getElementById("view-cal");
   var viewDispatch = document.getElementById("view-dispatch");
@@ -65,6 +67,7 @@
 
   var db = null;
   if (!isConfigured() || !window.supabase) {
+    viewClock.hidden = true;
     viewLog.hidden = true;
     viewCal.hidden = true;
     document.querySelector(".tabbar").hidden = true;
@@ -129,9 +132,9 @@
   var calLoaded = false;
 
   function showTab(which) {
-    var tabs = ["log", "cal", "dispatch"];
-    var btns = { log: tabLog, cal: tabCal, dispatch: tabDispatch };
-    var views = { log: viewLog, cal: viewCal, dispatch: viewDispatch };
+    var tabs = ["clock", "log", "cal", "dispatch"];
+    var btns = { clock: tabClock, log: tabLog, cal: tabCal, dispatch: tabDispatch };
+    var views = { clock: viewClock, log: viewLog, cal: viewCal, dispatch: viewDispatch };
     tabs.forEach(function (t) {
       var active = t === which;
       btns[t].classList.toggle("is-active", active);
@@ -142,6 +145,7 @@
     if (which === "dispatch" && !dLoaded) loadDispatch();
     window.scrollTo(0, 0);
   }
+  tabClock.addEventListener("click", function () { showTab("clock"); });
   tabLog.addEventListener("click", function () { showTab("log"); });
   tabCal.addEventListener("click", function () { showTab("cal"); });
   tabDispatch.addEventListener("click", function () { showTab("dispatch"); });
@@ -1356,4 +1360,734 @@
       el.hidden = true;
     });
   }
+
+  /* ==========================================================
+     CLOCK — PIN clock in/out (added 2026-10-31)
+     First screen of the app. A 4-digit PIN identifies each guy
+     (SHA-256 hash in crew_members; the PIN itself is never
+     stored). Clock-out cannot finish until the day's job hours
+     (plus drive time and lunch) account for the shift — those
+     entries land in crew_logs like the Log Hours form.
+     Punches live in clock_punches. A missed punch can be added
+     or fixed by hand (flagged manual = true; Alex's call —
+     Bouncie truck GPS is the backstop).
+     If the phone has no signal, punches and clock-out bundles
+     queue in localStorage and sync when signal returns.
+     ========================================================== */
+
+  var LS_SHIFT = "dutton_clock_shift_v1";
+  var LS_OUTBOX = "dutton_clock_outbox_v1";
+
+  var ckPinCard = document.getElementById("clock-pin-card");
+  var ckSetupCard = document.getElementById("clock-setup-card");
+  var ckMainCard = document.getElementById("clock-main-card");
+  var ckOutCard = document.getElementById("clock-out-card");
+  var ckDoneCard = document.getElementById("clock-done-card");
+  var ckBanner = document.getElementById("clock-banner");
+  var pinDots = document.getElementById("pin-dots");
+  var pinError = document.getElementById("pin-error");
+  var ckName = document.getElementById("clock-name");
+  var ckStatus = document.getElementById("clock-status");
+  var ckElapsed = document.getElementById("clock-elapsed");
+  var ckActionBtn = document.getElementById("clock-action-btn");
+
+  var ckMembers = null;        // [{person, pin_hash}]
+  var ckPinEntry = "";
+  var ckPerson = null;         // identified person
+  var ckOpenPunch = null;      // latest punch row for ckPerson
+  var ckOutCtx = null;         // clock-out session state
+  var elapsedTimer = null;
+
+  function lsGet(key) {
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function lsSet(key, val) {
+    try {
+      if (val === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, JSON.stringify(val));
+    } catch (e) { /* storage full/blocked — carry on */ }
+  }
+
+  function fmtTime(iso) {
+    var d = new Date(iso);
+    var h = d.getHours();
+    var ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12; if (h === 0) h = 12;
+    return h + ":" + pad(d.getMinutes()) + " " + ampm;
+  }
+
+  function fmtDur(hoursFloat) {
+    var mins = Math.round(hoursFloat * 60);
+    var h = Math.floor(mins / 60);
+    var m = mins % 60;
+    if (h === 0) return m + " min";
+    return h + "h " + pad(m) + "m";
+  }
+
+  function dateStrOf(d) {
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+
+  async function sha256Hex(text) {
+    var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+      return ("0" + b.toString(16)).slice(-2);
+    }).join("");
+  }
+  function pinHashFor(person, pin) {
+    return sha256Hex("dutton:" + person + ":" + pin);
+  }
+
+  /* ---------- offline outbox ---------- */
+  function outboxAdd(item) {
+    var box = lsGet(LS_OUTBOX) || [];
+    box.push(item);
+    lsSet(LS_OUTBOX, box);
+    renderClockBanner();
+  }
+
+  async function flushOutbox() {
+    var box = lsGet(LS_OUTBOX) || [];
+    if (!box.length) { renderClockBanner(); return; }
+    var left = [];
+    for (var i = 0; i < box.length; i++) {
+      var item = box[i];
+      try {
+        if (item.type === "punch") {
+          var r1 = await db.from("clock_punches").insert(item.row);
+          if (r1.error) throw r1.error;
+        } else if (item.type === "clockout") {
+          if (item.entries && item.entries.length) {
+            var r2 = await db.from("crew_logs").insert(item.entries);
+            if (r2.error) throw r2.error;
+          }
+          var r3 = await db.from("clock_punches").insert(item.punch);
+          if (r3.error) throw r3.error;
+        }
+      } catch (e) {
+        left.push(item);
+      }
+    }
+    lsSet(LS_OUTBOX, left.length ? left : null);
+    renderClockBanner();
+  }
+
+  function renderClockBanner() {
+    var box = lsGet(LS_OUTBOX) || [];
+    if (box.length) {
+      ckBanner.innerHTML = "<strong>No signal earlier</strong> — " + box.length +
+        " item" + (box.length === 1 ? "" : "s") +
+        " saved on this phone, will sync automatically.";
+      ckBanner.hidden = false;
+    } else {
+      ckBanner.hidden = true;
+      ckBanner.innerHTML = "";
+    }
+  }
+
+  /* ---------- members & identity ---------- */
+  async function loadMembers() {
+    if (ckMembers) return ckMembers;
+    var res = await db.from("crew_members").select("person,pin_hash").order("person");
+    if (res.error) throw res.error;
+    ckMembers = res.data || [];
+    return ckMembers;
+  }
+
+  async function memberByPin(pin) {
+    var members = await loadMembers();
+    for (var i = 0; i < members.length; i++) {
+      if (!members[i].pin_hash) continue;
+      var h = await pinHashFor(members[i].person, pin);
+      if (h === members[i].pin_hash) return members[i].person;
+    }
+    return null;
+  }
+
+  async function verifyPin(person, pin) {
+    var members = await loadMembers();
+    for (var i = 0; i < members.length; i++) {
+      if (members[i].person !== person) continue;
+      if (!members[i].pin_hash) return false;
+      return (await pinHashFor(person, pin)) === members[i].pin_hash;
+    }
+    return false;
+  }
+
+  function showClockCard(which) {
+    var cards = {
+      pin: ckPinCard, setup: ckSetupCard, main: ckMainCard,
+      out: ckOutCard, done: ckDoneCard
+    };
+    Object.keys(cards).forEach(function (k) { cards[k].hidden = k !== which; });
+    if (which !== "main" && elapsedTimer) {
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
+    }
+  }
+
+  function renderPinDots() {
+    var dots = pinDots.querySelectorAll(".pin-dot");
+    dots.forEach(function (d, i) {
+      d.classList.toggle("filled", i < ckPinEntry.length);
+    });
+  }
+
+  function pinFail(msg) {
+    pinError.textContent = msg;
+    pinError.hidden = false;
+    ckPinEntry = "";
+    renderPinDots();
+  }
+
+  document.getElementById("pin-pad").addEventListener("click", async function (e) {
+    var btn = e.target.closest(".pin-key");
+    if (!btn) return;
+    var key = btn.getAttribute("data-key");
+    pinError.hidden = true;
+    if (key === "clear") { ckPinEntry = ""; renderPinDots(); return; }
+    if (key === "back") { ckPinEntry = ckPinEntry.slice(0, -1); renderPinDots(); return; }
+    if (ckPinEntry.length >= 4) return;
+    ckPinEntry += key;
+    renderPinDots();
+    if (ckPinEntry.length === 4) {
+      var entered = ckPinEntry;
+      try {
+        var person = await memberByPin(entered);
+        if (!person) {
+          pinFail("That PIN doesn't match anyone. Try again — or set your PIN below if it's your first time.");
+          return;
+        }
+        ckPinEntry = "";
+        renderPinDots();
+        await identify(person);
+      } catch (err) {
+        pinFail("Couldn't check your PIN — check your signal and try again.");
+      }
+    }
+  });
+
+  async function latestPunch(person) {
+    var res = await db.from("clock_punches")
+      .select("id,person,kind,punched_at,manual")
+      .eq("person", person)
+      .order("punched_at", { ascending: false })
+      .limit(1);
+    if (res.error) throw res.error;
+    return (res.data && res.data[0]) || null;
+  }
+
+  async function identify(person) {
+    ckPerson = person;
+    personInput.value = person; // prefill the Log Hours form too
+    ckOpenPunch = null;
+    try {
+      ckOpenPunch = await latestPunch(person);
+    } catch (e) {
+      var local = lsGet(LS_SHIFT);
+      if (local && local.person === person) {
+        ckOpenPunch = { kind: "in", punched_at: local.since, person: person };
+      }
+    }
+    renderMainCard();
+    showClockCard("main");
+  }
+
+  function isClockedIn() {
+    return !!(ckOpenPunch && ckOpenPunch.kind === "in");
+  }
+
+  function renderMainCard() {
+    ckName.textContent = "Hey, " + firstName(ckPerson);
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+    if (isClockedIn()) {
+      ckStatus.innerHTML = "Clocked in since <strong>" + fmtTime(ckOpenPunch.punched_at) + "</strong>";
+      ckActionBtn.textContent = "Clock Out";
+      ckActionBtn.classList.add("is-out");
+      var tick = function () {
+        var hrs = (Date.now() - new Date(ckOpenPunch.punched_at).getTime()) / 3600000;
+        ckElapsed.textContent = fmtDur(hrs) + " on the clock";
+      };
+      tick();
+      elapsedTimer = setInterval(tick, 30000);
+    } else {
+      ckStatus.textContent = "You're not clocked in.";
+      ckElapsed.textContent = "";
+      ckActionBtn.textContent = "Clock In";
+      ckActionBtn.classList.remove("is-out");
+    }
+  }
+
+  document.getElementById("clock-switch").addEventListener("click", function () {
+    ckPerson = null;
+    ckOpenPunch = null;
+    ckPinEntry = "";
+    renderPinDots();
+    showClockCard("pin");
+  });
+
+  function getGeo() {
+    return new Promise(function (resolve) {
+      if (!navigator.geolocation) { resolve(null); return; }
+      var done = false;
+      var timer = setTimeout(function () {
+        if (!done) { done = true; resolve(null); }
+      }, 3000);
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        function () {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve(null);
+        },
+        { timeout: 3000, maximumAge: 60000 }
+      );
+    });
+  }
+
+  ckActionBtn.addEventListener("click", async function () {
+    if (!ckPerson) return;
+    if (!isClockedIn()) {
+      ckActionBtn.disabled = true;
+      try {
+        var geo = await getGeo();
+        var row = {
+          person: ckPerson, kind: "in",
+          punched_at: new Date().toISOString(),
+          manual: false,
+          lat: geo ? geo.lat : null, lng: geo ? geo.lng : null
+        };
+        var saved = true;
+        try {
+          var res = await db.from("clock_punches").insert(row);
+          if (res.error) throw res.error;
+        } catch (e) {
+          outboxAdd({ type: "punch", row: row });
+          saved = false;
+        }
+        lsSet(LS_SHIFT, { person: ckPerson, since: row.punched_at });
+        ckOpenPunch = { kind: "in", punched_at: row.punched_at, person: ckPerson };
+        document.getElementById("clock-done-title").textContent = "Clocked in";
+        document.getElementById("clock-done-sub").textContent =
+          firstName(ckPerson) + " — in at " + fmtTime(row.punched_at) +
+          (saved ? "." : ". Saved on this phone (no signal) — it will sync on its own.");
+        showClockCard("done");
+      } finally {
+        ckActionBtn.disabled = false;
+      }
+    } else {
+      await startClockOut();
+    }
+  });
+
+  document.getElementById("clock-done-btn").addEventListener("click", function () {
+    if (ckPerson && isClockedIn()) { renderMainCard(); showClockCard("main"); }
+    else { ckPinEntry = ""; renderPinDots(); showClockCard("pin"); }
+  });
+
+  /* ---------- clock out: account for the shift ---------- */
+  function coAddRow(kind, prefill) {
+    var wrap = document.createElement("div");
+    wrap.className = "co-entry";
+    wrap.setAttribute("data-kind", kind);
+    if (kind === "drive") {
+      wrap.innerHTML =
+        '<div class="co-entry-head"><span class="co-entry-kind">Drive time</span>' +
+        '<button type="button" class="thumb-remove co-remove" aria-label="Remove">&times;</button></div>' +
+        '<div class="form-row">' +
+        '<div class="field"><label class="f-label">From / to</label>' +
+        '<input type="text" class="co-loc" maxlength="120" placeholder="e.g. Shop to Phoenix Plaza" autocomplete="off"></div>' +
+        '<div class="field"><label class="f-label">Hours</label>' +
+        '<input type="number" class="co-hours" inputmode="decimal" step="0.25" min="0" max="24" placeholder="0.0"></div>' +
+        "</div>";
+    } else {
+      wrap.innerHTML =
+        '<div class="co-entry-head"><span class="co-entry-kind">Job</span>' +
+        '<button type="button" class="thumb-remove co-remove" aria-label="Remove">&times;</button></div>' +
+        '<div class="field"><label class="f-label">Job name</label>' +
+        '<input type="text" class="co-job" maxlength="120" placeholder="e.g. Cast iron pipe repair" autocomplete="off"></div>' +
+        '<div class="field"><label class="f-label">Location</label>' +
+        '<input type="text" class="co-loc" maxlength="120" placeholder="e.g. Phoenix Plaza" autocomplete="off"></div>' +
+        '<div class="form-row">' +
+        '<div class="field"><label class="f-label">Hours</label>' +
+        '<input type="number" class="co-hours" inputmode="decimal" step="0.25" min="0" max="24" placeholder="0.0"></div>' +
+        '<div class="field"><label class="f-label">Status</label>' +
+        '<div class="status-seg co-status-seg">' +
+        '<button type="button" class="seg-btn is-active" data-costatus="finished">Finished</button>' +
+        '<button type="button" class="seg-btn" data-costatus="ongoing">Ongoing</button>' +
+        "</div></div></div>" +
+        '<div class="field"><label class="f-label">What did you do?</label>' +
+        '<textarea class="co-desc" rows="2" maxlength="2000" placeholder="A sentence or two"></textarea></div>';
+    }
+    if (prefill) {
+      if (prefill.hours) wrap.querySelector(".co-hours").value = prefill.hours;
+      if (prefill.loc) wrap.querySelector(".co-loc").value = prefill.loc;
+    }
+    wrap.querySelector(".co-remove").addEventListener("click", function () {
+      wrap.remove();
+      coRecalc();
+    });
+    wrap.querySelectorAll(".co-status-seg .seg-btn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        wrap.querySelectorAll(".co-status-seg .seg-btn").forEach(function (x) {
+          x.classList.remove("is-active");
+        });
+        b.classList.add("is-active");
+      });
+    });
+    wrap.querySelector(".co-hours").addEventListener("input", coRecalc);
+    document.getElementById("co-entries").appendChild(wrap);
+    return wrap;
+  }
+
+  async function startClockOut() {
+    var inAt = new Date(ckOpenPunch.punched_at);
+    var outAt = new Date();
+    var elapsed = (outAt.getTime() - inAt.getTime()) / 3600000;
+    ckOutCtx = {
+      person: ckPerson, inAt: inAt, outAt: outAt, elapsed: elapsed,
+      workDate: dateStrOf(inAt), existingHours: 0
+    };
+    document.getElementById("co-name").textContent = firstName(ckPerson);
+    document.getElementById("co-shift").innerHTML =
+      "In at <strong>" + fmtTime(inAt.toISOString()) + "</strong> &middot; out at <strong>" +
+      fmtTime(outAt.toISOString()) + "</strong> &middot; " + fmtDur(elapsed) + " total";
+    document.getElementById("co-entries").innerHTML = "";
+    document.getElementById("co-lunch").checked = false;
+    var coErr = document.getElementById("co-error");
+    coErr.hidden = true;
+    coErr.textContent = "";
+    coAddRow("job");
+    // Jobs already logged today (Log Hours tab) count toward the shift.
+    try {
+      var res = await db.from("crew_logs")
+        .select("hours")
+        .eq("person", ckPerson)
+        .eq("date", ckOutCtx.workDate);
+      if (!res.error && res.data) {
+        ckOutCtx.existingHours = res.data.reduce(function (s, r) {
+          return s + Number(r.hours || 0);
+        }, 0);
+      }
+    } catch (e) { /* offline — tally just uses what's entered here */ }
+    var exEl = document.getElementById("co-existing");
+    if (ckOutCtx.existingHours > 0) {
+      exEl.textContent = "You already logged " + fmtHours(ckOutCtx.existingHours) +
+        " today in Log Hours — that counts. Account for the rest below.";
+      exEl.hidden = false;
+    } else {
+      exEl.hidden = true;
+    }
+    showClockCard("out");
+    coRecalc();
+  }
+
+  function coAllocated() {
+    var sum = ckOutCtx ? ckOutCtx.existingHours : 0;
+    document.querySelectorAll("#co-entries .co-entry").forEach(function (row) {
+      var h = parseFloat(row.querySelector(".co-hours").value);
+      if (!isNaN(h) && h > 0) sum += h;
+    });
+    if (document.getElementById("co-lunch").checked) sum += 0.5;
+    return sum;
+  }
+
+  function coRecalc() {
+    if (!ckOutCtx) return;
+    var allocated = coAllocated();
+    var remaining = ckOutCtx.elapsed - allocated;
+    var tally = document.getElementById("co-tally");
+    var finish = document.getElementById("co-finish");
+    if (Math.abs(remaining) <= 0.25) {
+      tally.innerHTML = "&#10003; Day accounted for — " + fmtDur(allocated) + " of " + fmtDur(ckOutCtx.elapsed);
+      tally.classList.add("ok");
+      finish.disabled = false;
+    } else if (remaining > 0) {
+      tally.textContent = fmtDur(remaining) + " still to account for";
+      tally.classList.remove("ok");
+      finish.disabled = true;
+    } else {
+      tally.textContent = fmtDur(-remaining) + " over the shift — trim the hours";
+      tally.classList.remove("ok");
+      finish.disabled = true;
+    }
+  }
+
+  document.getElementById("co-add-job").addEventListener("click", function () { coAddRow("job"); });
+  document.getElementById("co-add-drive").addEventListener("click", function () { coAddRow("drive"); });
+  document.getElementById("co-lunch").addEventListener("change", coRecalc);
+  document.getElementById("co-cancel").addEventListener("click", function () {
+    ckOutCtx = null;
+    renderMainCard();
+    showClockCard("main");
+  });
+
+  document.getElementById("co-finish").addEventListener("click", async function () {
+    if (!ckOutCtx) return;
+    var finishBtn = document.getElementById("co-finish");
+    var coErr = document.getElementById("co-error");
+    coErr.hidden = true;
+
+    var entries = [];
+    var bad = null;
+    document.querySelectorAll("#co-entries .co-entry").forEach(function (row) {
+      var h = parseFloat(row.querySelector(".co-hours").value);
+      if (isNaN(h) || h <= 0) return; // empty row — ignored
+      if (row.getAttribute("data-kind") === "drive") {
+        entries.push({
+          person: ckOutCtx.person, date: ckOutCtx.workDate,
+          job_name: "Drive time",
+          location: row.querySelector(".co-loc").value.trim() || null,
+          description: "Drive time",
+          hours: h, status: "finished", photo_urls: []
+        });
+      } else {
+        var job = row.querySelector(".co-job").value.trim();
+        var desc = row.querySelector(".co-desc").value.trim();
+        if (!job || !desc) { bad = "Each job needs a name and a line about what you did."; return; }
+        var seg = row.querySelector(".co-status-seg .seg-btn.is-active");
+        entries.push({
+          person: ckOutCtx.person, date: ckOutCtx.workDate,
+          job_name: job,
+          location: row.querySelector(".co-loc").value.trim() || null,
+          description: desc,
+          hours: h,
+          status: seg ? seg.getAttribute("data-costatus") : "finished",
+          photo_urls: []
+        });
+      }
+    });
+    if (bad) {
+      coErr.textContent = bad;
+      coErr.hidden = false;
+      return;
+    }
+
+    finishBtn.disabled = true;
+    finishBtn.textContent = "Clocking out…";
+    var outRow = {
+      person: ckOutCtx.person, kind: "out",
+      punched_at: ckOutCtx.outAt.toISOString(),
+      manual: false, lat: null, lng: null
+    };
+    var saved = true;
+    try {
+      var geo = await getGeo();
+      if (geo) { outRow.lat = geo.lat; outRow.lng = geo.lng; }
+      if (entries.length) {
+        var r = await db.from("crew_logs").insert(entries);
+        if (r.error) throw r.error;
+      }
+      var rp = await db.from("clock_punches").insert(outRow);
+      if (rp.error) throw rp.error;
+    } catch (e) {
+      outboxAdd({ type: "clockout", punch: outRow, entries: entries });
+      saved = false;
+    }
+    lsSet(LS_SHIFT, null);
+    ckOpenPunch = { kind: "out", punched_at: outRow.punched_at, person: ckOutCtx.person };
+    document.getElementById("clock-done-title").textContent = "Clocked out";
+    document.getElementById("clock-done-sub").textContent =
+      firstName(ckOutCtx.person) + " — " + fmtDur(ckOutCtx.elapsed) + " today. " +
+      (saved ? "Hours are in." : "No signal — saved on this phone, will sync on its own.");
+    ckOutCtx = null;
+    finishBtn.textContent = "Finish clock out";
+    showClockCard("done");
+  });
+
+  /* ---------- set PIN (first time) ---------- */
+  function fillMemberSelects() {
+    loadMembers().then(function (members) {
+      var opts = members.map(function (m) {
+        return '<option value="' + esc(m.person) + '">' + esc(m.person) + "</option>";
+      }).join("");
+      document.getElementById("setup-person").innerHTML = opts;
+      document.getElementById("p_person").innerHTML = opts;
+    }).catch(function () { /* offline — selects stay empty */ });
+  }
+
+  document.getElementById("pin-setup-link").addEventListener("click", function () {
+    fillMemberSelects();
+    var err = document.getElementById("setup-error");
+    err.hidden = true;
+    showClockCard("setup");
+  });
+  document.getElementById("setup-cancel").addEventListener("click", function () {
+    showClockCard("pin");
+  });
+  document.getElementById("setup-save").addEventListener("click", async function () {
+    var err = document.getElementById("setup-error");
+    var person = document.getElementById("setup-person").value;
+    var p1 = document.getElementById("setup-pin").value.trim();
+    var p2 = document.getElementById("setup-pin2").value.trim();
+    function fail(msg) { err.textContent = msg; err.hidden = false; }
+    if (!person) { fail("Pick your name."); return; }
+    if (!/^\d{4}$/.test(p1)) { fail("PIN must be 4 digits."); return; }
+    if (p1 !== p2) { fail("The two PINs don't match."); return; }
+    try {
+      var members = await loadMembers();
+      for (var i = 0; i < members.length; i++) {
+        if (members[i].person !== person && members[i].pin_hash) {
+          if ((await pinHashFor(members[i].person, p1)) === members[i].pin_hash) {
+            fail("That PIN is taken — pick a different one.");
+            return;
+          }
+        }
+      }
+      var h = await pinHashFor(person, p1);
+      var res = await db.from("crew_members").update({ pin_hash: h }).eq("person", person);
+      if (res.error) throw res.error;
+      ckMembers = null;
+      document.getElementById("setup-pin").value = "";
+      document.getElementById("setup-pin2").value = "";
+      await identify(person);
+    } catch (e) {
+      fail("Couldn't save — check your signal and try again.");
+    }
+  });
+
+  /* ---------- fix a punch (manual) ---------- */
+  var punchBackdrop = document.getElementById("punch-backdrop");
+  var punchKind = "in";
+
+  function openPunchSheet() {
+    fillMemberSelects();
+    document.getElementById("punch-error").hidden = true;
+    document.getElementById("punch-ok").hidden = true;
+    document.getElementById("punch-today").innerHTML = "";
+    var now = new Date();
+    document.getElementById("p_when").value =
+      dateStrOf(now) + "T" + pad(now.getHours()) + ":" + pad(now.getMinutes());
+    punchBackdrop.hidden = false;
+  }
+  function closePunchSheet() { punchBackdrop.hidden = true; }
+
+  document.getElementById("pin-manual-link").addEventListener("click", openPunchSheet);
+  document.getElementById("clock-manual-link2").addEventListener("click", openPunchSheet);
+  document.getElementById("punch-close").addEventListener("click", closePunchSheet);
+  punchBackdrop.addEventListener("click", function (e) {
+    if (e.target === punchBackdrop) closePunchSheet();
+  });
+  document.querySelectorAll("[data-pkind]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll("[data-pkind]").forEach(function (x) {
+        x.classList.remove("is-active");
+        x.setAttribute("aria-pressed", "false");
+      });
+      b.classList.add("is-active");
+      b.setAttribute("aria-pressed", "true");
+      punchKind = b.getAttribute("data-pkind");
+    });
+  });
+
+  async function loadTodayPunches() {
+    var person = document.getElementById("p_person").value;
+    var pin = document.getElementById("p_pin").value.trim();
+    var box = document.getElementById("punch-today");
+    if (!person || pin.length !== 4) { box.innerHTML = ""; return; }
+    var okPin = false;
+    try { okPin = await verifyPin(person, pin); } catch (e) { /* offline */ }
+    if (!okPin) { box.innerHTML = ""; return; }
+    var start = new Date(); start.setHours(0, 0, 0, 0);
+    var res = await db.from("clock_punches")
+      .select("id,kind,punched_at,manual")
+      .eq("person", person)
+      .gte("punched_at", start.toISOString())
+      .order("punched_at", { ascending: true });
+    if (res.error || !res.data || !res.data.length) {
+      box.innerHTML = '<p class="sub">No punches yet today.</p>';
+      return;
+    }
+    box.innerHTML = '<p class="f-label">Today\'s punches — fix a time</p>' + res.data.map(function (p) {
+      var d = new Date(p.punched_at);
+      var val = dateStrOf(d) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+      return '<div class="punch-row">' +
+        '<span class="punch-kind">' + (p.kind === "in" ? "In" : "Out") + (p.manual ? " (manual)" : "") + "</span>" +
+        '<input type="datetime-local" class="punch-time" data-pid="' + p.id + '" value="' + val + '">' +
+        '<button type="button" class="btn-outline btn-small punch-fix" data-pid="' + p.id + '">Fix</button>' +
+        "</div>";
+    }).join("");
+    box.querySelectorAll(".punch-fix").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var id = btn.getAttribute("data-pid");
+        var input = box.querySelector('.punch-time[data-pid="' + id + '"]');
+        var err = document.getElementById("punch-error");
+        var okEl = document.getElementById("punch-ok");
+        if (!input.value) return;
+        var upd = await db.from("clock_punches")
+          .update({ punched_at: new Date(input.value).toISOString(), manual: true })
+          .eq("id", Number(id));
+        if (upd.error) {
+          err.textContent = "Couldn't fix that punch — try again.";
+          err.hidden = false;
+          return;
+        }
+        err.hidden = true;
+        okEl.textContent = "Punch fixed.";
+        okEl.hidden = false;
+        if (ckPerson === person) { ckOpenPunch = await latestPunch(person); }
+      });
+    });
+  }
+  document.getElementById("p_person").addEventListener("change", loadTodayPunches);
+  document.getElementById("p_pin").addEventListener("input", loadTodayPunches);
+
+  document.getElementById("punch-form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var err = document.getElementById("punch-error");
+    var okEl = document.getElementById("punch-ok");
+    err.hidden = true;
+    okEl.hidden = true;
+    var person = document.getElementById("p_person").value;
+    var pin = document.getElementById("p_pin").value.trim();
+    var when = document.getElementById("p_when").value;
+    function fail(msg) { err.textContent = msg; err.hidden = false; }
+    if (!person) { fail("Pick your name."); return; }
+    if (!/^\d{4}$/.test(pin)) { fail("Enter your 4-digit PIN."); return; }
+    if (!when) { fail("Pick the date and time."); return; }
+    var okPin = false;
+    try { okPin = await verifyPin(person, pin); } catch (e2) { /* handled below */ }
+    if (!okPin) { fail("That PIN doesn't match " + firstName(person) + "."); return; }
+    var row = {
+      person: person, kind: punchKind,
+      punched_at: new Date(when).toISOString(),
+      manual: true, lat: null, lng: null,
+      note: document.getElementById("p_note").value.trim() || null
+    };
+    var res = await db.from("clock_punches").insert(row);
+    if (res.error) { fail("Couldn't save — check your signal and try again."); return; }
+    okEl.textContent = "Punch added (" + (punchKind === "in" ? "clock in" : "clock out") +
+      ", " + fmtTime(row.punched_at) + ").";
+    okEl.hidden = false;
+    document.getElementById("p_note").value = "";
+    if (ckPerson === person) {
+      try { ckOpenPunch = await latestPunch(person); } catch (e3) { /* keep old state */ }
+    }
+    loadTodayPunches();
+  });
+
+  /* ---------- clock boot ---------- */
+  (function bootClock() {
+    renderClockBanner();
+    showClockCard("pin");
+    flushOutbox();
+    window.addEventListener("online", flushOutbox);
+    // If this phone was left clocked in, say so right away.
+    var local = lsGet(LS_SHIFT);
+    if (local && local.person) {
+      ckBanner.innerHTML = "<strong>" + esc(firstName(local.person)) +
+        "</strong> is clocked in on this phone since " + fmtTime(local.since) +
+        " — enter your PIN to clock out.";
+      ckBanner.hidden = false;
+    }
+  })();
 })();
