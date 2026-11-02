@@ -1731,6 +1731,8 @@
     if (prefill) {
       if (prefill.hours) wrap.querySelector(".co-hours").value = prefill.hours;
       if (prefill.loc) wrap.querySelector(".co-loc").value = prefill.loc;
+      if (prefill.job && wrap.querySelector(".co-job")) wrap.querySelector(".co-job").value = prefill.job;
+      if (prefill.desc && wrap.querySelector(".co-desc")) wrap.querySelector(".co-desc").value = prefill.desc;
     }
     wrap.querySelector(".co-remove").addEventListener("click", function () {
       wrap.remove();
@@ -1763,6 +1765,8 @@
       fmtTime(outAt.toISOString()) + "</strong> &middot; " + fmtDur(elapsed) + " total";
     document.getElementById("co-entries").innerHTML = "";
     document.getElementById("co-lunch").checked = false;
+    document.getElementById("co-dictate-text").value = "";
+    document.getElementById("co-parse-msg").hidden = true;
     var coErr = document.getElementById("co-error");
     coErr.hidden = true;
     coErr.textContent = "";
@@ -1824,6 +1828,7 @@
 
   document.getElementById("co-add-job").addEventListener("click", function () { coAddRow("job"); });
   document.getElementById("co-add-drive").addEventListener("click", function () { coAddRow("drive"); });
+  document.getElementById("co-parse-btn").addEventListener("click", coApplyDictation);
   document.getElementById("co-lunch").addEventListener("change", coRecalc);
   document.getElementById("co-cancel").addEventListener("click", function () {
     ckOutCtx = null;
@@ -1903,6 +1908,201 @@
     finishBtn.textContent = "Finish clock out";
     showClockCard("done");
   });
+
+  /* === DAY TALK PARSER (pure functions — no DOM, unit-testable) === */
+
+  function dayTalkNormalize(text) {
+    var ones = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+    var tens = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+    var t = " " + String(text || "").toLowerCase() + " ";
+    // "an hour and a half" / "a hour and a half"
+    t = t.replace(/\b(?:an|a)\s+hour\s+and\s+a\s+half\b/g, " 1.5 hours ");
+    // "two and a half hours", "1 and a half hours"
+    t = t.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+(?:\.\d+)?)\s+and\s+a\s+half\s+hours?\b/g, function (m, n) {
+      var v = ones[n] !== undefined ? ones[n] : parseFloat(n);
+      return " " + (v + 0.5) + " hours ";
+    });
+    t = t.replace(/\bhour and a half\b/g, " 1.5 hours ");
+    t = t.replace(/\bhalf\s+(?:an\s+)?hour\b/g, " 0.5 hours ");
+    t = t.replace(/\bquarter\s+(?:of\s+an\s+)?hour\b/g, " 0.25 hours ");
+    t = t.replace(/\ba\s+couple\s+(?:of\s+)?hours?\b/g, " 2 hours ");
+    t = t.replace(/\ban\s+hour\b/g, " 1 hours ");
+    t = t.replace(/\ban\s+minute\b/g, " 1 minutes ");
+    // compound tens: "forty five minutes" -> "45 minutes"
+    t = t.replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(one|two|three|four|five|six|seven|eight|nine)\b/g, function (m, a, b) {
+      return " " + (tens[a] + ones[b]) + " ";
+    });
+    // single number words in front of a time unit
+    t = t.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b(?=\s*(?:hours?|hrs?|minutes?|mins?)\b)/g, function (m) {
+      return ones[m] !== undefined ? String(ones[m]) : String(tens[m]);
+    });
+    return t;
+  }
+
+  function dayTalkSplit(norm) {
+    var marked = norm.replace(/\bthen\b/g, "\u0001").replace(/\band\s+(?=(?:spent|did|drove|driving|drive|worked|went|took)\b)/g, "\u0001");
+    var clauses = [], cur = "";
+    function isDigit(ch) { return ch >= "0" && ch <= "9"; }
+    for (var i = 0; i < marked.length; i++) {
+      var ch = marked.charAt(i);
+      var isSep = ch === ";" || ch === "\n" || ch === "," || ch === "\u0001" ||
+        (ch === "." && !(isDigit(marked.charAt(i - 1)) && isDigit(marked.charAt(i + 1))));
+      if (isSep) { clauses.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    clauses.push(cur);
+    return clauses.map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+
+  function dayTalkDuration(clause) {
+    var total = 0, found = false;
+    var rest = clause.replace(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/g, function (m, n) {
+      total += parseFloat(n); found = true; return " ";
+    });
+    rest = rest.replace(/(\d+(?:\.\d+)?)\s*(?:minutes?|mins?)\b/g, function (m, n) {
+      total += parseFloat(n) / 60; found = true; return " ";
+    });
+    if (!found) return null;
+    return { hours: Math.round(total * 4) / 4, rest: rest };
+  }
+
+  function dayTalkClean(s) {
+    return String(s || "")
+      .replace(/\b(spent|spend|did|was|were|worked|working|went|got|had|i|we|and|then|there|today)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^[\s,.-]+|[\s,.-]+$/g, "")
+      .trim();
+  }
+
+  function dayTalkSentence(s) {
+    var out = dayTalkClean(s);
+    if (!out) return "";
+    return out.charAt(0).toUpperCase() + out.slice(1);
+  }
+
+  var DAYTALK_VERBS = { doing: 1, working: 1, fixing: 1, replacing: 1, installing: 1, repairing: 1, cleaning: 1, running: 1, using: 1, snaking: 1, jetting: 1, digging: 1, swapping: 1, pulling: 1, unclogging: 1, checking: 1, testing: 1, on: 1, for: 1 };
+
+  // Split "phoenix plaza fixing the leak" -> { location: "phoenix plaza", work: "fixing the leak" }
+  function dayTalkSplitLocWork(text) {
+    var tokens = String(text || "").trim().split(/\s+/).filter(Boolean);
+    for (var i = 0; i < tokens.length; i++) {
+      var tok = tokens[i].replace(/[^a-z0-9]/g, "");
+      if (DAYTALK_VERBS[tok]) {
+        var workTokens = (tok === "on" || tok === "for") ? tokens.slice(i + 1) : tokens.slice(i);
+        return { location: tokens.slice(0, i).join(" "), work: workTokens.join(" ") };
+      }
+    }
+    return { location: tokens.join(" "), work: "" };
+  }
+
+  // Returns { jobs: [{hours, location, jobName, description}], drives: [{hours, location}], lunch: bool }
+  function dayTalkParse(text) {
+    var clauses = dayTalkSplit(dayTalkNormalize(text));
+    var out = { jobs: [], drives: [], lunch: false };
+
+    clauses.forEach(function (raw) {
+      var clause = raw;
+      var hadLunchMention = false;
+      if (/\blunch\b/.test(clause)) {
+        hadLunchMention = true;
+        if (!/\b(no|skipped|skip|without)\b[^.]*\blunch\b/.test(clause) && !/\bdidn'?t\b[^.]*\blunch\b/.test(clause)) {
+          out.lunch = true;
+        }
+        clause = clause.replace(/\b(took|take|taking|had|have|my|a|the|short)?\s*lunch\s*(break)?\b/g, " ").trim();
+        if (!clause) return;
+      }
+      var dur = dayTalkDuration(clause);
+      if (!dur) {
+        // Lunch-only leftovers ("no", "skipped") are not job detail — drop them.
+        if (hadLunchMention && dayTalkClean(clause).split(" ").filter(Boolean).length <= 2) return;
+        // No time mentioned — tack the detail onto the previous job's description.
+        var frag = dayTalkSentence(clause);
+        if (frag && out.jobs.length) {
+          var prev = out.jobs[out.jobs.length - 1];
+          prev.description = (prev.description + ". " + frag).slice(0, 300);
+        }
+        return;
+      }
+      var rest = dur.rest;
+      if (/\b(driv\w*|drove|commut\w*|travel\w*)\b/.test(rest)) {
+        var locOut = "";
+        var m = rest.match(/\bfrom\s+(.+?)\s+to\s+(.+)$/);
+        if (m) locOut = dayTalkSentence(m[1].trim()) + " to " + m[2].trim();
+        else {
+          var cleanedDrive = dayTalkClean(rest.replace(/\b(driv\w*|drove|commut\w*|travel\w*|back|time)\b/g, " "));
+          locOut = dayTalkSentence(cleanedDrive.replace(/^to\s+/, ""));
+        }
+        out.drives.push({ hours: dur.hours, location: locOut.slice(0, 120) });
+        return;
+      }
+      // job clause: pull out the location after "at" (or scan the whole clause)
+      var location = "", workText = "";
+      var atIdx = rest.search(/\bat\b\s+/);
+      var scanText = atIdx >= 0 ? rest.slice(atIdx).replace(/^\s*at\s+/, "") : rest;
+      var split = dayTalkSplitLocWork(scanText);
+      if (atIdx >= 0) location = dayTalkSentence(split.location);
+      workText = split.work;
+      var desc = dayTalkSentence(rest);
+      var jobName = "";
+      if (workText && dayTalkClean(workText)) {
+        jobName = dayTalkSentence(workText);
+        var words = jobName.split(" ");
+        if (words.length > 8) jobName = words.slice(0, 8).join(" ");
+      } else if (atIdx < 0 && split.location && dayTalkClean(split.location)) {
+        jobName = dayTalkSentence(split.location).split(" ").slice(0, 8).join(" ");
+      } else if (location) {
+        jobName = "Work at " + location;
+      } else {
+        jobName = desc.split(" ").slice(0, 8).join(" ");
+      }
+      if (!desc) desc = jobName;
+      if (!jobName && !desc && !location) return; // stray duration with no content
+      out.jobs.push({
+        hours: dur.hours,
+        location: location.slice(0, 120),
+        jobName: jobName.slice(0, 120),
+        description: desc.slice(0, 300)
+      });
+    });
+    return out;
+  }
+
+  /* === END DAY TALK PARSER === */
+
+  function coApplyDictation() {
+    var ta = document.getElementById("co-dictate-text");
+    var msg = document.getElementById("co-parse-msg");
+    function showMsg(t) { msg.textContent = t; msg.hidden = false; }
+    var parsed = dayTalkParse(ta.value);
+    var count = parsed.jobs.length + parsed.drives.length;
+    if (!count && !parsed.lunch) {
+      showMsg("Couldn't pick any hours out of that. Try: \u201c2 hours at the Plaza fixing a leak. 45 minutes driving. Took lunch.\u201d");
+      return;
+    }
+    // If every row is still blank, replace them; otherwise append.
+    var rows = Array.prototype.slice.call(document.querySelectorAll("#co-entries .co-entry"));
+    var allEmpty = rows.every(function (r) {
+      var h = r.querySelector(".co-hours").value;
+      var j = r.querySelector(".co-job");
+      var d = r.querySelector(".co-desc");
+      var l = r.querySelector(".co-loc");
+      return !h && !(j && j.value.trim()) && !(d && d.value.trim()) && !(l && l.value.trim());
+    });
+    if (allEmpty) rows.forEach(function (r) { r.remove(); });
+    parsed.jobs.forEach(function (j) {
+      coAddRow("job", { hours: j.hours, loc: j.location, job: j.jobName, desc: j.description });
+    });
+    parsed.drives.forEach(function (d) {
+      coAddRow("drive", { hours: d.hours, loc: d.location });
+    });
+    if (parsed.lunch) document.getElementById("co-lunch").checked = true;
+    coRecalc();
+    var parts = [];
+    if (parsed.jobs.length) parts.push(parsed.jobs.length + (parsed.jobs.length === 1 ? " job" : " jobs"));
+    if (parsed.drives.length) parts.push("drive time");
+    if (parsed.lunch) parts.push("lunch");
+    showMsg("Sorted: " + parts.join(", ") + ". Check the list over \u2014 fix anything it heard wrong, then Finish.");
+  }
 
   /* ---------- set PIN (first time) ---------- */
   function fillMemberSelects() {

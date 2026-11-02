@@ -1107,6 +1107,18 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
 /* clock-out day accounting */
 
+.co-dictate {
+  border: 1px solid var(--blue);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: var(--card2);
+}
+
+.co-dictate textarea { min-height: 64px; }
+
+.co-dictate .btn { margin-top: 10px; }
+
 .co-entry {
   border: 1px solid var(--line);
   border-radius: 12px;

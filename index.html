@@ -102,6 +102,13 @@
       <p class="clock-who">Clock out &mdash; <span id="co-name"></span></p>
       <p class="clock-status" id="co-shift"></p>
       <p class="sub" id="co-existing" hidden></p>
+      <div class="co-dictate">
+        <label class="f-label" for="co-dictate-text">&#127908; Or just talk about your day</label>
+        <p class="sub">Tap the box, tap the mic on your keyboard, and talk &mdash; like &ldquo;Two hours at the Plaza fixing a leak. An hour and a half at High Street on the water meter. Forty-five minutes driving. Took lunch.&rdquo; Then tap Sort it and check the list it fills in.</p>
+        <textarea id="co-dictate-text" rows="3" maxlength="2000" placeholder="Tap here, then tap the mic on your keyboard and talk&hellip;"></textarea>
+        <button type="button" class="btn primary btn-block" id="co-parse-btn">Sort it into the list &darr;</button>
+        <p class="sub" id="co-parse-msg" hidden></p>
+      </div>
       <div id="co-entries"></div>
       <div class="co-add-row">
         <button type="button" class="btn-outline" id="co-add-job">+ Add job</button>
