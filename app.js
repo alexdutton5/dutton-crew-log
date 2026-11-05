@@ -1829,6 +1829,7 @@
   document.getElementById("co-add-job").addEventListener("click", function () { coAddRow("job"); });
   document.getElementById("co-add-drive").addEventListener("click", function () { coAddRow("drive"); });
   document.getElementById("co-parse-btn").addEventListener("click", coApplyDictation);
+  coSetupMic();
   document.getElementById("co-lunch").addEventListener("change", coRecalc);
   document.getElementById("co-cancel").addEventListener("click", function () {
     ckOutCtx = null;
@@ -2068,6 +2069,83 @@
   }
 
   /* === END DAY TALK PARSER === */
+
+  /* In-app mic for the talk-about-your-day box (Web Speech API).
+     The button only appears when the browser supports it (Safari on
+     iPhone, Chrome on Android). Where it doesn't, the box still works
+     with the keyboard's own dictation mic. Speech goes into the same
+     textarea the parser reads, so Sort it works the same either way. */
+  function coSetupMic() {
+    var btn = document.getElementById("co-mic-btn");
+    var ta = document.getElementById("co-dictate-text");
+    var msg = document.getElementById("co-parse-msg");
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR || !btn || !ta) return; // unsupported: button stays hidden
+    btn.hidden = false;
+
+    var rec = null;
+    var listening = false;
+    var baseText = "";
+    var sessionFinal = "";
+
+    function setBtn() {
+      btn.innerHTML = listening ? "&#128308; Listening&hellip; tap to stop" : "&#127908; Tap to talk";
+      btn.classList.toggle("co-mic-live", listening);
+    }
+    function showMsg(t) { if (msg) { msg.textContent = t; msg.hidden = false; } }
+
+    function start() {
+      rec = new SR();
+      rec.lang = "en-US";
+      rec.continuous = true;
+      rec.interimResults = true;
+      baseText = ta.value.replace(/\s+$/, "");
+      sessionFinal = "";
+      rec.onresult = function (ev) {
+        var interim = "";
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          var r = ev.results[i];
+          if (r.isFinal) sessionFinal += r[0].transcript;
+          else interim += r[0].transcript;
+        }
+        var head = baseText ? baseText + " " : "";
+        ta.value = (head + sessionFinal + interim).slice(0, 2000);
+      };
+      rec.onerror = function (ev) {
+        if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+          listening = false;
+          setBtn();
+          showMsg("Mic is blocked for this site. Allow microphone access in your browser settings, or tap the box and use the mic on your keyboard instead.");
+        }
+        // "no-speech" / "aborted": let onend handle state.
+      };
+      rec.onend = function () {
+        if (listening) {
+          // Some browsers stop after a pause; keep going until tapped off.
+          try { rec.start(); return; } catch (e) { /* fall through */ }
+        }
+        setBtn();
+      };
+      try {
+        rec.start();
+        listening = true;
+        setBtn();
+        showMsg("Listening — talk about your day, then tap the mic again to stop and hit Sort it.");
+      } catch (e) {
+        showMsg("Couldn't start the mic. Tap the box and use the mic on your keyboard instead.");
+      }
+    }
+
+    btn.addEventListener("click", function () {
+      if (listening) {
+        listening = false;
+        setBtn();
+        if (rec) { try { rec.stop(); } catch (e) { /* already stopped */ } }
+      } else {
+        start();
+      }
+    });
+  }
 
   function coApplyDictation() {
     var ta = document.getElementById("co-dictate-text");

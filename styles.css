@@ -1119,6 +1119,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
 .co-dictate .btn { margin-top: 10px; }
 
+#co-mic-btn.co-mic-live {
+  background: #b3261e;
+  border-color: #b3261e;
+  color: #fff;
+}
+
 .co-entry {
   border: 1px solid var(--line);
   border-radius: 12px;
