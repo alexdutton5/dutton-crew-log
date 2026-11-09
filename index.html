@@ -29,6 +29,7 @@
       <button type="button" class="tab is-active" id="tab-clock" aria-selected="true">&#128339; Clock</button>
       <button type="button" class="tab" id="tab-log" aria-selected="false">Log Hours</button>
       <button type="button" class="tab" id="tab-cal" aria-selected="false">History</button>
+      <button type="button" class="tab" id="tab-hours" aria-selected="false">Hours</button>
       <button type="button" class="tab" id="tab-dispatch" aria-selected="false">&#128197; Calendar</button>
     </div>
   </nav>
@@ -237,6 +238,22 @@
     <div id="day-panel"></div>
   </section>
 
+  <!-- ============ HOURS (clock punches by week) ============ -->
+  <section id="view-hours" aria-labelledby="hours-heading" hidden>
+    <h2 id="hours-heading" class="sr-only">Clock hours</h2>
+
+    <div class="card cal-card">
+      <div class="cal-nav">
+        <button type="button" class="nav-btn" id="prev-week" aria-label="Previous week">&#8249;</button>
+        <span class="cal-title" id="hours-title">This week</span>
+        <button type="button" class="nav-btn" id="next-week" aria-label="Next week">&#8250;</button>
+      </div>
+      <p class="sub">Clock in &amp; out times for the week (Sunday&ndash;Saturday). Tap <strong>Fix</strong> on any day to correct it with your PIN.</p>
+    </div>
+
+    <div id="hours-list"></div>
+  </section>
+
   <!-- ============ DISPATCH ============ -->
   <section id="view-dispatch" aria-labelledby="dispatch-heading" hidden>
     <h2 id="dispatch-heading" class="sr-only">Dispatch</h2>
@@ -441,6 +458,48 @@
         <p class="error-msg" id="punch-error" hidden></p>
         <p class="sub" id="punch-ok" hidden></p>
         <button type="submit" class="btn primary" id="punch-save">Add punch</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============ FIX HOURS SHEET (any day, from the Hours tab) ============ -->
+<div class="sheet-backdrop" id="hours-backdrop" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="hours-sheet-title">
+    <div class="sheet-header">
+      <span id="hours-sheet-title">Fix hours</span>
+      <button type="button" class="sheet-close" id="hours-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="sheet-body">
+      <form id="hours-form" novalidate>
+        <div class="field">
+          <label class="f-label" for="h_person">Your name</label>
+          <select id="h_person"></select>
+        </div>
+        <div class="field">
+          <label class="f-label" for="h_pin">Your PIN</label>
+          <input type="password" id="h_pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="&bull;&bull;&bull;&bull;">
+        </div>
+        <div id="hours-day-list"></div>
+        <div class="field">
+          <span class="f-label">Add a missed punch</span>
+          <div class="status-seg" role="radiogroup" aria-label="Punch type">
+            <button type="button" class="seg-btn is-active" data-hkind="in" aria-pressed="true">Clock in</button>
+            <button type="button" class="seg-btn" data-hkind="out" aria-pressed="false">Clock out</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="f-label" for="h_when">Date &amp; time</label>
+          <input type="datetime-local" id="h_when">
+        </div>
+        <div class="field">
+          <label class="f-label" for="h_note">Note (optional)</label>
+          <input type="text" id="h_note" maxlength="120" placeholder="e.g. Forgot to clock out" autocomplete="off">
+        </div>
+        <p class="sub">Hand-entered punches are flagged as manual.</p>
+        <p class="error-msg" id="hours-error" hidden></p>
+        <p class="sub" id="hours-ok" hidden></p>
+        <button type="submit" class="btn primary" id="hours-save">Add punch</button>
       </form>
     </div>
   </div>

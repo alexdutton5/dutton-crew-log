@@ -1209,3 +1209,29 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 
 .punch-time { flex: 1; padding: 10px; }
+
+/* hours tab (weekly clock punches) */
+
+.hours-card { margin-bottom: 16px; }
+
+.hours-row {
+  display: grid;
+  grid-template-columns: 86px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 14px;
+}
+
+.hours-day { font-weight: 700; white-space: nowrap; }
+
+.hours-times { color: var(--text, #e5e7eb); }
+
+.hours-total { font-weight: 700; white-space: nowrap; }
+
+.hours-week-total { font-weight: 800; font-size: 14px; white-space: nowrap; }
+
+.hours-manual { color: var(--muted); font-size: 12px; }
+
+.hours-open { color: #fbbf24; font-size: 12px; font-weight: 600; }

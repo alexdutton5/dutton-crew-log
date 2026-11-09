@@ -11,10 +11,12 @@
   var tabClock = document.getElementById("tab-clock");
   var tabLog = document.getElementById("tab-log");
   var tabCal = document.getElementById("tab-cal");
+  var tabHours = document.getElementById("tab-hours");
   var tabDispatch = document.getElementById("tab-dispatch");
   var viewClock = document.getElementById("view-clock");
   var viewLog = document.getElementById("view-log");
   var viewCal = document.getElementById("view-cal");
+  var viewHours = document.getElementById("view-hours");
   var viewDispatch = document.getElementById("view-dispatch");
   var setupView = document.getElementById("setup-view");
 
@@ -70,6 +72,7 @@
     viewClock.hidden = true;
     viewLog.hidden = true;
     viewCal.hidden = true;
+    viewHours.hidden = true;
     document.querySelector(".tabbar").hidden = true;
     setupView.hidden = false;
     return;
@@ -132,9 +135,9 @@
   var calLoaded = false;
 
   function showTab(which) {
-    var tabs = ["clock", "log", "cal", "dispatch"];
-    var btns = { clock: tabClock, log: tabLog, cal: tabCal, dispatch: tabDispatch };
-    var views = { clock: viewClock, log: viewLog, cal: viewCal, dispatch: viewDispatch };
+    var tabs = ["clock", "log", "cal", "hours", "dispatch"];
+    var btns = { clock: tabClock, log: tabLog, cal: tabCal, hours: tabHours, dispatch: tabDispatch };
+    var views = { clock: viewClock, log: viewLog, cal: viewCal, hours: viewHours, dispatch: viewDispatch };
     tabs.forEach(function (t) {
       var active = t === which;
       btns[t].classList.toggle("is-active", active);
@@ -142,12 +145,14 @@
       views[t].hidden = !active;
     });
     if (which === "cal" && !calLoaded) loadMonth();
+    if (which === "hours") loadHoursWeek();
     if (which === "dispatch" && !dLoaded) loadDispatch();
     window.scrollTo(0, 0);
   }
   tabClock.addEventListener("click", function () { showTab("clock"); });
   tabLog.addEventListener("click", function () { showTab("log"); });
   tabCal.addEventListener("click", function () { showTab("cal"); });
+  tabHours.addEventListener("click", function () { showTab("hours"); });
   tabDispatch.addEventListener("click", function () { showTab("dispatch"); });
 
   /* ---------- default date = today ---------- */
@@ -2190,6 +2195,7 @@
       }).join("");
       document.getElementById("setup-person").innerHTML = opts;
       document.getElementById("p_person").innerHTML = opts;
+      document.getElementById("h_person").innerHTML = opts;
     }).catch(function () { /* offline — selects stay empty */ });
   }
 
@@ -2361,6 +2367,254 @@
       } catch (e3) { /* keep old state */ }
     }
     loadTodayPunches();
+  });
+
+  /* ---------- hours tab: weekly clock punches + fix any day ---------- */
+  var hoursList = document.getElementById("hours-list");
+  var hoursTitle = document.getElementById("hours-title");
+  var hoursWeekStart = null; // Date, local Sunday 00:00 of the shown week
+  var DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function sundayOf(d) {
+    var s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    s.setDate(s.getDate() - s.getDay());
+    return s;
+  }
+
+  async function loadHoursWeek() {
+    if (!hoursWeekStart) hoursWeekStart = sundayOf(new Date());
+    var start = new Date(hoursWeekStart);
+    var end = new Date(hoursWeekStart); end.setDate(end.getDate() + 7);
+    var lastDay = new Date(hoursWeekStart); lastDay.setDate(lastDay.getDate() + 6);
+    hoursTitle.textContent =
+      MONTHS_SHORT[start.getMonth()] + " " + start.getDate() + " \u2013 " +
+      MONTHS_SHORT[lastDay.getMonth()] + " " + lastDay.getDate() + ", " + lastDay.getFullYear();
+    hoursList.innerHTML = '<div class="card"><p class="sub">Loading hours\u2026</p></div>';
+
+    var members = [];
+    try { members = await loadMembers(); } catch (e) { /* offline */ }
+    var res = await db.from("clock_punches")
+      .select("id,person,kind,punched_at,manual")
+      .gte("punched_at", start.toISOString())
+      .lt("punched_at", end.toISOString())
+      .order("person", { ascending: true })
+      .order("punched_at", { ascending: true });
+    if (res.error) {
+      hoursList.innerHTML = '<div class="card"><p class="sub">Couldn\u2019t load hours \u2014 check your signal and reopen this tab.</p></div>';
+      return;
+    }
+
+    // Group punches per person, pair in\u2192out in time order, bucket by the
+    // clock-in's local date (an orphan out lands on its own date).
+    var byPerson = {};
+    (res.data || []).forEach(function (p) {
+      (byPerson[p.person] = byPerson[p.person] || []).push(p);
+    });
+    var names = members.map(function (m) { return m.person; });
+    Object.keys(byPerson).forEach(function (n) { if (names.indexOf(n) === -1) names.push(n); });
+
+    var todayStr = dateStrOf(new Date());
+    var html = "";
+    names.forEach(function (person) {
+      var segsByDay = {}; // dateStr -> [{in, out}]
+      var open = null;
+      var lastClosed = null;
+      (byPerson[person] || []).forEach(function (p) {
+        if (p.kind === "in") {
+          if (open) pushSeg(segsByDay, open, null);
+          open = p;
+        } else if (open) {
+          pushSeg(segsByDay, open, p); lastClosed = p; open = null;
+        } else if (lastClosed && lastClosed.punched_at === p.punched_at) {
+          // duplicate out-punch at the same time as the last one — ignore it
+        } else {
+          pushSeg(segsByDay, null, p);
+        }
+      });
+      if (open) pushSeg(segsByDay, open, null);
+
+      var weekSecs = 0;
+      var rows = "";
+      for (var i = 0; i < 7; i++) {
+        var d = new Date(hoursWeekStart); d.setDate(d.getDate() + i);
+        var ds = dateStrOf(d);
+        var segs = segsByDay[ds] || [];
+        var daySecs = 0;
+        var segHtml = segs.map(function (s) {
+          if (s.in && s.out) {
+            daySecs += (new Date(s.out.punched_at) - new Date(s.in.punched_at)) / 1000;
+            return fmtTime(s.in.punched_at) + " \u2192 " + fmtTime(s.out.punched_at) +
+              (s.in.manual || s.out.manual ? ' <span class="hours-manual">(manual)</span>' : "");
+          }
+          if (s.in) {
+            return fmtTime(s.in.punched_at) + " \u2192 \u2014" +
+              (ds === todayStr ? ' <span class="hours-open">still in</span>' : ' <span class="hours-open">no clock-out</span>');
+          }
+          return "\u2014 \u2192 " + fmtTime(s.out.punched_at) + ' <span class="hours-open">no clock-in</span>';
+        }).join("<br>");
+        weekSecs += daySecs;
+        rows += '<div class="hours-row">' +
+          '<span class="hours-day">' + DAYS_SHORT[d.getDay()] + " " + MONTHS_SHORT[d.getMonth()] + " " + d.getDate() + "</span>" +
+          '<span class="hours-times">' + (segHtml || "\u2014") + "</span>" +
+          '<span class="hours-total">' + (daySecs ? fmtDur(daySecs / 3600) : "") + "</span>" +
+          '<button type="button" class="btn-outline btn-small hours-fix" data-person="' + esc(person) + '" data-date="' + ds + '">Fix</button>' +
+          "</div>";
+      }
+      html += '<div class="card hours-card">' +
+        '<div class="day-panel-head"><h3><span class="person-chip ' + personClass(person) + '">' + esc(person) + '</span></h3>' +
+        '<span class="hours-week-total">Week: ' + fmtDur(weekSecs / 3600) + "</span></div>" +
+        rows + "</div>";
+    });
+    hoursList.innerHTML = html || '<div class="card"><p class="sub">No crew members yet.</p></div>';
+    hoursList.querySelectorAll(".hours-fix").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openHoursSheet(btn.getAttribute("data-person"), btn.getAttribute("data-date"));
+      });
+    });
+
+    function pushSeg(map, inP, outP) {
+      var key = dateStrOf(new Date((inP || outP).punched_at));
+      (map[key] = map[key] || []).push({ in: inP, out: outP });
+    }
+  }
+  document.getElementById("prev-week").addEventListener("click", function () {
+    hoursWeekStart.setDate(hoursWeekStart.getDate() - 7); loadHoursWeek();
+  });
+  document.getElementById("next-week").addEventListener("click", function () {
+    hoursWeekStart.setDate(hoursWeekStart.getDate() + 7); loadHoursWeek();
+  });
+
+  /* ----- fix-hours sheet: edit one person's punches for one day ----- */
+  var hoursBackdrop = document.getElementById("hours-backdrop");
+  var hoursCtx = { person: "", dateStr: "" };
+  var hoursKind = "in";
+
+  function openHoursSheet(person, dateStr) {
+    fillMemberSelects();
+    hoursCtx = { person: person, dateStr: dateStr };
+    document.getElementById("hours-sheet-title").textContent =
+      "Fix hours \u2014 " + firstName(person) + ", " + longDate(dateStr);
+    var sel = document.getElementById("h_person");
+    sel.value = person;
+    document.getElementById("h_pin").value = "";
+    document.getElementById("hours-error").hidden = true;
+    document.getElementById("hours-ok").hidden = true;
+    document.getElementById("hours-day-list").innerHTML =
+      '<p class="sub">Enter your PIN to see and fix that day\u2019s punches.</p>';
+    document.getElementById("h_when").value = dateStr + "T07:00";
+    document.getElementById("h_note").value = "";
+    hoursBackdrop.hidden = false;
+  }
+  function closeHoursSheet() { hoursBackdrop.hidden = true; }
+  document.getElementById("hours-close").addEventListener("click", closeHoursSheet);
+  hoursBackdrop.addEventListener("click", function (e) {
+    if (e.target === hoursBackdrop) closeHoursSheet();
+  });
+  document.querySelectorAll("[data-hkind]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll("[data-hkind]").forEach(function (x) {
+        x.classList.remove("is-active");
+        x.setAttribute("aria-pressed", "false");
+      });
+      b.classList.add("is-active");
+      b.setAttribute("aria-pressed", "true");
+      hoursKind = b.getAttribute("data-hkind");
+    });
+  });
+
+  async function loadHoursDayList() {
+    var person = document.getElementById("h_person").value;
+    var pin = document.getElementById("h_pin").value.trim();
+    var box = document.getElementById("hours-day-list");
+    hoursCtx.person = person;
+    if (!person || pin.length !== 4) {
+      box.innerHTML = '<p class="sub">Enter your PIN to see and fix that day\u2019s punches.</p>';
+      return;
+    }
+    var okPin = false;
+    try { okPin = await verifyPin(person, pin); } catch (e) { /* offline */ }
+    if (!okPin) {
+      box.innerHTML = '<p class="sub">That PIN doesn\u2019t match ' + esc(firstName(person)) + ".</p>";
+      return;
+    }
+    var parts = hoursCtx.dateStr.split("-");
+    var start = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    var end = new Date(start); end.setDate(end.getDate() + 1);
+    var res = await db.from("clock_punches")
+      .select("id,kind,punched_at,manual")
+      .eq("person", person)
+      .gte("punched_at", start.toISOString())
+      .lt("punched_at", end.toISOString())
+      .order("punched_at", { ascending: true });
+    if (res.error || !res.data || !res.data.length) {
+      box.innerHTML = '<p class="sub">No punches this day \u2014 add the missed ones below.</p>';
+      return;
+    }
+    box.innerHTML = '<p class="f-label">That day\u2019s punches \u2014 fix a time</p>' + res.data.map(function (p) {
+      var d = new Date(p.punched_at);
+      var val = dateStrOf(d) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+      return '<div class="punch-row">' +
+        '<span class="punch-kind">' + (p.kind === "in" ? "In" : "Out") + (p.manual ? " (manual)" : "") + "</span>" +
+        '<input type="datetime-local" class="punch-time" data-hpid="' + p.id + '" value="' + val + '">' +
+        '<button type="button" class="btn-outline btn-small hours-punch-fix" data-hpid="' + p.id + '">Fix</button>' +
+        "</div>";
+    }).join("");
+    box.querySelectorAll(".hours-punch-fix").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var id = btn.getAttribute("data-hpid");
+        var input = box.querySelector('.punch-time[data-hpid="' + id + '"]');
+        var err = document.getElementById("hours-error");
+        var okEl = document.getElementById("hours-ok");
+        if (!input.value) return;
+        var upd = await db.from("clock_punches")
+          .update({ punched_at: new Date(input.value).toISOString(), manual: true })
+          .eq("id", Number(id));
+        if (upd.error) {
+          err.textContent = "Couldn\u2019t fix that punch \u2014 try again.";
+          err.hidden = false;
+          return;
+        }
+        err.hidden = true;
+        okEl.textContent = "Punch fixed.";
+        okEl.hidden = false;
+        loadHoursDayList();
+        loadHoursWeek();
+      });
+    });
+  }
+  document.getElementById("h_person").addEventListener("change", loadHoursDayList);
+  document.getElementById("h_pin").addEventListener("input", loadHoursDayList);
+
+  document.getElementById("hours-form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var err = document.getElementById("hours-error");
+    var okEl = document.getElementById("hours-ok");
+    err.hidden = true;
+    okEl.hidden = true;
+    var person = document.getElementById("h_person").value;
+    var pin = document.getElementById("h_pin").value.trim();
+    var when = document.getElementById("h_when").value;
+    function fail(msg) { err.textContent = msg; err.hidden = false; }
+    if (!person) { fail("Pick your name."); return; }
+    if (!/^\d{4}$/.test(pin)) { fail("Enter your 4-digit PIN."); return; }
+    if (!when) { fail("Pick the date and time."); return; }
+    var okPin = false;
+    try { okPin = await verifyPin(person, pin); } catch (e2) { /* handled below */ }
+    if (!okPin) { fail("That PIN doesn\u2019t match " + firstName(person) + "."); return; }
+    var row = {
+      person: person, kind: hoursKind,
+      punched_at: new Date(when).toISOString(),
+      manual: true, lat: null, lng: null,
+      note: document.getElementById("h_note").value.trim() || null
+    };
+    var res = await db.from("clock_punches").insert(row);
+    if (res.error) { fail("Couldn\u2019t save \u2014 check your signal and try again."); return; }
+    okEl.textContent = "Punch added (" + (hoursKind === "in" ? "clock in" : "clock out") +
+      ", " + fmtTime(row.punched_at) + ").";
+    okEl.hidden = false;
+    document.getElementById("h_note").value = "";
+    loadHoursDayList();
+    loadHoursWeek();
   });
 
   /* ---------- clock boot ---------- */
