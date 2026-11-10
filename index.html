@@ -238,20 +238,39 @@
     <div id="day-panel"></div>
   </section>
 
-  <!-- ============ HOURS (clock punches by week) ============ -->
+  <!-- ============ HOURS (clock punches by week, PIN-gated per person) ============ -->
   <section id="view-hours" aria-labelledby="hours-heading" hidden>
     <h2 id="hours-heading" class="sr-only">Clock hours</h2>
 
-    <div class="card cal-card">
-      <div class="cal-nav">
-        <button type="button" class="nav-btn" id="prev-week" aria-label="Previous week">&#8249;</button>
-        <span class="cal-title" id="hours-title">This week</span>
-        <button type="button" class="nav-btn" id="next-week" aria-label="Next week">&#8250;</button>
-      </div>
-      <p class="sub">Clock in &amp; out times for the week (Sunday&ndash;Saturday). Tap <strong>Fix</strong> on any day to correct it with your PIN.</p>
+    <div class="card" id="hours-gate">
+      <h3 class="card-title">Your hours</h3>
+      <p class="sub">Pick your name and enter your PIN to see your clock hours.</p>
+      <form id="hours-gate-form" novalidate>
+        <div class="field">
+          <label class="f-label" for="hours-person">Your name</label>
+          <select id="hours-person"></select>
+        </div>
+        <div class="field">
+          <label class="f-label" for="hours-pin">Your PIN</label>
+          <input type="password" id="hours-pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="&bull;&bull;&bull;&bull;">
+        </div>
+        <p class="error-msg" id="hours-gate-error" hidden></p>
+        <button type="submit" class="btn primary" id="hours-unlock">See my hours</button>
+      </form>
     </div>
 
-    <div id="hours-list"></div>
+    <div id="hours-main" hidden>
+      <div class="card cal-card">
+        <div class="cal-nav">
+          <button type="button" class="nav-btn" id="prev-week" aria-label="Previous week">&#8249;</button>
+          <span class="cal-title" id="hours-title">This week</span>
+          <button type="button" class="nav-btn" id="next-week" aria-label="Next week">&#8250;</button>
+        </div>
+        <p class="sub">Your clock in &amp; out times for the week (Sunday&ndash;Saturday). Tap <strong>Fix</strong> on any day to correct it with your PIN. <button type="button" class="btn-outline btn-small" id="hours-lock">Lock</button></p>
+      </div>
+
+      <div id="hours-list"></div>
+    </div>
   </section>
 
   <!-- ============ DISPATCH ============ -->

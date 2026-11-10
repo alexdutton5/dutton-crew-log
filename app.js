@@ -2196,6 +2196,7 @@
       document.getElementById("setup-person").innerHTML = opts;
       document.getElementById("p_person").innerHTML = opts;
       document.getElementById("h_person").innerHTML = opts;
+      document.getElementById("hours-person").innerHTML = opts;
     }).catch(function () { /* offline — selects stay empty */ });
   }
 
@@ -2373,6 +2374,7 @@
   var hoursList = document.getElementById("hours-list");
   var hoursTitle = document.getElementById("hours-title");
   var hoursWeekStart = null; // Date, local Sunday 00:00 of the shown week
+  var hoursPerson = null;    // set only after that person's PIN verifies
   var DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   function sundayOf(d) {
@@ -2382,6 +2384,17 @@
   }
 
   async function loadHoursWeek() {
+    var gate = document.getElementById("hours-gate");
+    var main = document.getElementById("hours-main");
+    if (!hoursPerson) {
+      // Locked: nobody sees any hours until they unlock with their own PIN.
+      fillMemberSelects();
+      gate.hidden = false;
+      main.hidden = true;
+      return;
+    }
+    gate.hidden = true;
+    main.hidden = false;
     if (!hoursWeekStart) hoursWeekStart = sundayOf(new Date());
     var start = new Date(hoursWeekStart);
     var end = new Date(hoursWeekStart); end.setDate(end.getDate() + 7);
@@ -2395,6 +2408,7 @@
     try { members = await loadMembers(); } catch (e) { /* offline */ }
     var res = await db.from("clock_punches")
       .select("id,person,kind,punched_at,manual")
+      .eq("person", hoursPerson)
       .gte("punched_at", start.toISOString())
       .lt("punched_at", end.toISOString())
       .order("person", { ascending: true })
@@ -2412,6 +2426,7 @@
     });
     var names = members.map(function (m) { return m.person; });
     Object.keys(byPerson).forEach(function (n) { if (names.indexOf(n) === -1) names.push(n); });
+    names = names.filter(function (n) { return n === hoursPerson; });
 
     var todayStr = dateStrOf(new Date());
     var html = "";
@@ -2482,6 +2497,33 @@
   });
   document.getElementById("next-week").addEventListener("click", function () {
     hoursWeekStart.setDate(hoursWeekStart.getDate() + 7); loadHoursWeek();
+  });
+
+  /* ----- hours gate: unlock with your own PIN, see only your hours ----- */
+  document.getElementById("hours-gate-form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var err = document.getElementById("hours-gate-error");
+    var person = document.getElementById("hours-person").value;
+    var pin = document.getElementById("hours-pin").value.trim();
+    function fail(msg) { err.textContent = msg; err.hidden = false; }
+    err.hidden = true;
+    if (!person) { fail("Pick your name."); return; }
+    if (!/^\d{4}$/.test(pin)) { fail("Enter your 4-digit PIN."); return; }
+    var okPin = false;
+    try { okPin = await verifyPin(person, pin); } catch (e2) { /* offline — fail below */ }
+    if (!okPin) {
+      fail("That PIN doesn\u2019t match " + firstName(person) +
+        ". If you haven\u2019t set a PIN yet, set one on the Clock tab first.");
+      return;
+    }
+    hoursPerson = person;
+    document.getElementById("hours-pin").value = "";
+    loadHoursWeek();
+  });
+  document.getElementById("hours-lock").addEventListener("click", function () {
+    hoursPerson = null;
+    document.getElementById("hours-pin").value = "";
+    loadHoursWeek();
   });
 
   /* ----- fix-hours sheet: edit one person's punches for one day ----- */
