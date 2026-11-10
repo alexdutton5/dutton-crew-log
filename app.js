@@ -11,12 +11,10 @@
   var tabClock = document.getElementById("tab-clock");
   var tabLog = document.getElementById("tab-log");
   var tabCal = document.getElementById("tab-cal");
-  var tabHours = document.getElementById("tab-hours");
   var tabDispatch = document.getElementById("tab-dispatch");
   var viewClock = document.getElementById("view-clock");
   var viewLog = document.getElementById("view-log");
   var viewCal = document.getElementById("view-cal");
-  var viewHours = document.getElementById("view-hours");
   var viewDispatch = document.getElementById("view-dispatch");
   var setupView = document.getElementById("setup-view");
 
@@ -72,7 +70,6 @@
     viewClock.hidden = true;
     viewLog.hidden = true;
     viewCal.hidden = true;
-    viewHours.hidden = true;
     document.querySelector(".tabbar").hidden = true;
     setupView.hidden = false;
     return;
@@ -135,9 +132,9 @@
   var calLoaded = false;
 
   function showTab(which) {
-    var tabs = ["clock", "log", "cal", "hours", "dispatch"];
-    var btns = { clock: tabClock, log: tabLog, cal: tabCal, hours: tabHours, dispatch: tabDispatch };
-    var views = { clock: viewClock, log: viewLog, cal: viewCal, hours: viewHours, dispatch: viewDispatch };
+    var tabs = ["clock", "log", "cal", "dispatch"];
+    var btns = { clock: tabClock, log: tabLog, cal: tabCal, dispatch: tabDispatch };
+    var views = { clock: viewClock, log: viewLog, cal: viewCal, dispatch: viewDispatch };
     tabs.forEach(function (t) {
       var active = t === which;
       btns[t].classList.toggle("is-active", active);
@@ -145,14 +142,12 @@
       views[t].hidden = !active;
     });
     if (which === "cal" && !calLoaded) loadMonth();
-    if (which === "hours") loadHoursWeek();
     if (which === "dispatch" && !dLoaded) loadDispatch();
     window.scrollTo(0, 0);
   }
   tabClock.addEventListener("click", function () { showTab("clock"); });
   tabLog.addEventListener("click", function () { showTab("log"); });
   tabCal.addEventListener("click", function () { showTab("cal"); });
-  tabHours.addEventListener("click", function () { showTab("hours"); });
   tabDispatch.addEventListener("click", function () { showTab("dispatch"); });
 
   /* ---------- default date = today ---------- */
@@ -2524,6 +2519,24 @@
     hoursPerson = null;
     document.getElementById("hours-pin").value = "";
     loadHoursWeek();
+  });
+
+  /* ----- the sheet itself: opened by the "My clock hours" button ----- */
+  var hoursViewBackdrop = document.getElementById("hoursview-backdrop");
+  function openHoursView() {
+    hoursViewBackdrop.hidden = false;
+    loadHoursWeek();
+  }
+  function closeHoursView() {
+    hoursViewBackdrop.hidden = true;
+    // Re-lock on close so the next person at this phone starts at the PIN gate.
+    hoursPerson = null;
+    document.getElementById("hours-pin").value = "";
+  }
+  document.getElementById("my-hours-btn").addEventListener("click", openHoursView);
+  document.getElementById("hoursview-close").addEventListener("click", closeHoursView);
+  hoursViewBackdrop.addEventListener("click", function (e) {
+    if (e.target === hoursViewBackdrop) closeHoursView();
   });
 
   /* ----- fix-hours sheet: edit one person's punches for one day ----- */

@@ -1235,3 +1235,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .hours-manual { color: var(--muted); font-size: 12px; }
 
 .hours-open { color: #fbbf24; font-size: 12px; font-weight: 600; }
+
+/* "My clock hours" entry card on the Log Hours tab */
+
+.hours-entry-card .btn-outline {
+  width: 100%;
+  padding: 12px;
+  font-weight: 700;
+  font-size: 15px;
+}
