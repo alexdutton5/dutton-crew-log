@@ -1365,9 +1365,11 @@
      CLOCK — PIN clock in/out (added 2026-10-31)
      First screen of the app. A 4-digit PIN identifies each guy
      (SHA-256 hash in crew_members; the PIN itself is never
-     stored). Clock-out cannot finish until the day's job hours
-     (plus drive time and lunch) account for the shift — those
-     entries land in crew_logs like the Log Hours form.
+     stored). At clock-out the day's job hours (plus drive time
+     and lunch) are tallied against the shift, but unaccounted
+     time does NOT block finishing (Alex, 2026-11-10) — only
+     logging MORE than the shift does. The entries land in
+     crew_logs like the Log Hours form.
      Punches live in clock_punches. A missed punch can be added
      or fixed by hand (flagged manual = true; Alex's call —
      Bouncie truck GPS is the backstop).
@@ -1816,9 +1818,11 @@
       tally.classList.add("ok");
       finish.disabled = false;
     } else if (remaining > 0) {
-      tally.textContent = fmtDur(remaining) + " still to account for";
+      // Unaccounted time no longer blocks clock-out (Alex, 2026-11-10) —
+      // the gap just shows in the tally; payroll sees the punch either way.
+      tally.textContent = fmtDur(remaining) + " unaccounted — that's fine, you can clock out";
       tally.classList.remove("ok");
-      finish.disabled = true;
+      finish.disabled = false;
     } else {
       tally.textContent = fmtDur(-remaining) + " over the shift — trim the hours";
       tally.classList.remove("ok");
