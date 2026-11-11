@@ -1366,10 +1366,11 @@
      First screen of the app. A 4-digit PIN identifies each guy
      (SHA-256 hash in crew_members; the PIN itself is never
      stored). At clock-out the day's job hours (plus drive time
-     and lunch) are tallied against the shift, but unaccounted
-     time does NOT block finishing (Alex, 2026-11-10) — only
-     logging MORE than the shift does. The entries land in
-     crew_logs like the Log Hours form.
+     and lunch) are tallied against the shift. Unaccounted
+     time does NOT block finishing (Alex, 2026-11-10), but at
+     least ONE entry is required to clock out (Alex,
+     2026-11-11) — and logging MORE than the shift blocks.
+     The entries land in crew_logs like the Log Hours form.
      Punches live in clock_punches. A missed punch can be added
      or fixed by hand (flagged manual = true; Alex's call —
      Bouncie truck GPS is the backstop).
@@ -1759,7 +1760,7 @@
     var elapsed = (outAt.getTime() - inAt.getTime()) / 3600000;
     ckOutCtx = {
       person: ckPerson, inAt: inAt, outAt: outAt, elapsed: elapsed,
-      workDate: dateStrOf(inAt), existingHours: 0
+      workDate: dateStrOf(inAt), existingHours: 0, existingCount: 0
     };
     document.getElementById("co-name").textContent = firstName(ckPerson);
     document.getElementById("co-shift").innerHTML =
@@ -1780,6 +1781,7 @@
         .eq("person", ckPerson)
         .eq("date", ckOutCtx.workDate);
       if (!res.error && res.data) {
+        ckOutCtx.existingCount = res.data.length;
         ckOutCtx.existingHours = res.data.reduce(function (s, r) {
           return s + Number(r.hours || 0);
         }, 0);
@@ -1807,13 +1809,27 @@
     return sum;
   }
 
+  function coEntryCount() {
+    var n = ckOutCtx ? (ckOutCtx.existingCount || 0) : 0;
+    document.querySelectorAll("#co-entries .co-entry").forEach(function (row) {
+      var h = parseFloat(row.querySelector(".co-hours").value);
+      if (!isNaN(h) && h > 0) n += 1;
+    });
+    return n;
+  }
+
   function coRecalc() {
     if (!ckOutCtx) return;
     var allocated = coAllocated();
     var remaining = ckOutCtx.elapsed - allocated;
     var tally = document.getElementById("co-tally");
     var finish = document.getElementById("co-finish");
-    if (Math.abs(remaining) <= 0.25) {
+    if (coEntryCount() === 0) {
+      // At least one entry is required to clock out (Alex, 2026-11-11).
+      tally.textContent = "Log at least one job entry to clock out";
+      tally.classList.remove("ok");
+      finish.disabled = true;
+    } else if (Math.abs(remaining) <= 0.25) {
       tally.innerHTML = "&#10003; Day accounted for — " + fmtDur(allocated) + " of " + fmtDur(ckOutCtx.elapsed);
       tally.classList.add("ok");
       finish.disabled = false;
@@ -1878,6 +1894,11 @@
     });
     if (bad) {
       coErr.textContent = bad;
+      coErr.hidden = false;
+      return;
+    }
+    if (entries.length === 0 && !(ckOutCtx.existingCount > 0)) {
+      coErr.textContent = "Log at least one job entry to clock out.";
       coErr.hidden = false;
       return;
     }
