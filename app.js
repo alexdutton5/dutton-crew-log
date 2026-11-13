@@ -1370,6 +1370,12 @@
      time does NOT block finishing (Alex, 2026-11-10), but at
      least ONE entry is required to clock out (Alex,
      2026-11-11) — and logging MORE than the shift blocks.
+     At least 30% of the shift must be accounted for before
+     Finish unlocks (Alex, 2026-11-13). A shift left open into
+     a later day is fixed at the next clock-out: the tech sets
+     the real out-time for that day (punch flagged manual) and
+     logs that day's work, and only then can clock in fresh
+     (Alex, 2026-11-13).
      The entries land in crew_logs like the Log Hours form.
      Punches live in clock_punches. A missed punch can be added
      or fixed by hand (flagged manual = true; Alex's call —
@@ -1420,6 +1426,11 @@
     var ampm = h >= 12 ? "PM" : "AM";
     h = h % 12; if (h === 0) h = 12;
     return h + ":" + pad(d.getMinutes()) + " " + ampm;
+  }
+
+  function fmtDay(iso) {
+    var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days[new Date(iso).getDay()];
   }
 
   function fmtDur(hoursFloat) {
@@ -1607,7 +1618,15 @@
     ckName.textContent = "Hey, " + firstName(ckPerson);
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
     if (isClockedIn()) {
-      ckStatus.innerHTML = "Clocked in since <strong>" + fmtTime(ckOpenPunch.punched_at) + "</strong>";
+      if (dateStrOf(new Date(ckOpenPunch.punched_at)) !== dateStrOf(new Date())) {
+        // Open shift from a previous day — flag it before it turns
+        // into a marathon "shift" at clock-out (Alex, 2026-11-13).
+        ckStatus.innerHTML = "Clocked in since <strong>" + fmtTime(ckOpenPunch.punched_at) +
+          " " + fmtDay(ckOpenPunch.punched_at) + "</strong> — no clock-out that day. " +
+          "Tap Clock Out to fix that day first.";
+      } else {
+        ckStatus.innerHTML = "Clocked in since <strong>" + fmtTime(ckOpenPunch.punched_at) + "</strong>";
+      }
       ckActionBtn.textContent = "Clock Out";
       ckActionBtn.classList.add("is-out");
       var tick = function () {
@@ -1754,18 +1773,72 @@
     return wrap;
   }
 
+  function coRenderShiftLine() {
+    if (!ckOutCtx) return;
+    var inAt = ckOutCtx.inAt, outAt = ckOutCtx.outAt;
+    var inLabel = fmtTime(inAt.toISOString());
+    var outLabel = fmtTime(outAt.toISOString());
+    if (ckOutCtx.stale) {
+      inLabel += " " + fmtDay(inAt.toISOString());
+      outLabel += " " + fmtDay(outAt.toISOString());
+    }
+    document.getElementById("co-shift").innerHTML =
+      "In at <strong>" + inLabel + "</strong> &middot; out at <strong>" +
+      outLabel + "</strong> &middot; " + fmtDur(ckOutCtx.elapsed) + " total";
+  }
+
+  function coOutTimeChanged() {
+    if (!ckOutCtx || !ckOutCtx.stale) return;
+    var v = document.getElementById("co-out-time").value;
+    if (!v) return;
+    var p = v.split(":");
+    var outAt = new Date(ckOutCtx.inAt);
+    outAt.setHours(parseInt(p[0], 10), parseInt(p[1], 10), 0, 0);
+    var coErr = document.getElementById("co-error");
+    if (outAt.getTime() <= ckOutCtx.inAt.getTime()) {
+      coErr.textContent = "Clock-out has to be after the " +
+        fmtTime(ckOutCtx.inAt.toISOString()) + " clock-in.";
+      coErr.hidden = false;
+      return;
+    }
+    coErr.hidden = true;
+    ckOutCtx.outAt = outAt;
+    ckOutCtx.elapsed = (outAt.getTime() - ckOutCtx.inAt.getTime()) / 3600000;
+    coRenderShiftLine();
+    coRecalc();
+  }
+
   async function startClockOut() {
     var inAt = new Date(ckOpenPunch.punched_at);
-    var outAt = new Date();
+    var now = new Date();
+    // A shift left open from a previous day: don't run the clock to
+    // now (a 25+ hour "shift"). Default the out-time to 4:00 PM on the
+    // day the shift started and let the tech correct it (Alex, 2026-11-13).
+    var stale = dateStrOf(inAt) !== dateStrOf(now);
+    var outAt = now;
+    if (stale) {
+      outAt = new Date(inAt);
+      outAt.setHours(16, 0, 0, 0);
+      if (outAt.getTime() <= inAt.getTime()) {
+        outAt = new Date(inAt.getTime() + 3600000);
+      }
+    }
     var elapsed = (outAt.getTime() - inAt.getTime()) / 3600000;
     ckOutCtx = {
       person: ckPerson, inAt: inAt, outAt: outAt, elapsed: elapsed,
-      workDate: dateStrOf(inAt), existingHours: 0, existingCount: 0
+      workDate: dateStrOf(inAt), existingHours: 0, existingCount: 0,
+      stale: stale
     };
     document.getElementById("co-name").textContent = firstName(ckPerson);
-    document.getElementById("co-shift").innerHTML =
-      "In at <strong>" + fmtTime(inAt.toISOString()) + "</strong> &middot; out at <strong>" +
-      fmtTime(outAt.toISOString()) + "</strong> &middot; " + fmtDur(elapsed) + " total";
+    var staleBox = document.getElementById("co-stale");
+    if (staleBox) {
+      staleBox.hidden = !stale;
+      if (stale) {
+        document.getElementById("co-out-time").value =
+          pad(outAt.getHours()) + ":" + pad(outAt.getMinutes());
+      }
+    }
+    coRenderShiftLine();
     document.getElementById("co-entries").innerHTML = "";
     document.getElementById("co-lunch").checked = false;
     document.getElementById("co-dictate-text").value = "";
@@ -1790,7 +1863,8 @@
     var exEl = document.getElementById("co-existing");
     if (ckOutCtx.existingHours > 0) {
       exEl.textContent = "You already logged " + fmtHours(ckOutCtx.existingHours) +
-        " today in Log Hours — that counts. Account for the rest below.";
+        (ckOutCtx.stale ? " for that day" : " today") +
+        " in Log Hours — that counts. Account for the rest below.";
       exEl.hidden = false;
     } else {
       exEl.hidden = true;
@@ -1829,6 +1903,14 @@
       tally.textContent = "Log at least one job entry to clock out";
       tally.classList.remove("ok");
       finish.disabled = true;
+    } else if (allocated < ckOutCtx.elapsed * 0.3 - 0.01) {
+      // At least 30% of the shift must be accounted for (Alex, 2026-11-13) —
+      // one token entry against a full day no longer gets you out.
+      tally.textContent = "Only " + fmtDur(allocated) + " of " + fmtDur(ckOutCtx.elapsed) +
+        " logged — log at least " + fmtDur(ckOutCtx.elapsed * 0.3) +
+        " (30% of the shift) to clock out";
+      tally.classList.remove("ok");
+      finish.disabled = true;
     } else if (Math.abs(remaining) <= 0.25) {
       tally.innerHTML = "&#10003; Day accounted for — " + fmtDur(allocated) + " of " + fmtDur(ckOutCtx.elapsed);
       tally.classList.add("ok");
@@ -1851,6 +1933,7 @@
   document.getElementById("co-parse-btn").addEventListener("click", coApplyDictation);
   coSetupMic();
   document.getElementById("co-lunch").addEventListener("change", coRecalc);
+  document.getElementById("co-out-time").addEventListener("change", coOutTimeChanged);
   document.getElementById("co-cancel").addEventListener("click", function () {
     ckOutCtx = null;
     renderMainCard();
@@ -1902,13 +1985,20 @@
       coErr.hidden = false;
       return;
     }
+    if (coAllocated() < ckOutCtx.elapsed * 0.3 - 0.01) {
+      coErr.textContent = "Log at least 30% of the shift (" +
+        fmtDur(ckOutCtx.elapsed * 0.3) + ") before clocking out.";
+      coErr.hidden = false;
+      return;
+    }
 
     finishBtn.disabled = true;
     finishBtn.textContent = "Clocking out…";
     var outRow = {
       person: ckOutCtx.person, kind: "out",
       punched_at: ckOutCtx.outAt.toISOString(),
-      manual: false, lat: null, lng: null
+      // A fixed previous-day shift is a corrected punch (Alex, 2026-11-13).
+      manual: !!ckOutCtx.stale, lat: null, lng: null
     };
     var saved = true;
     try {
@@ -1927,9 +2017,13 @@
     lsSet(LS_SHIFT, null);
     ckOpenPunch = { kind: "out", punched_at: outRow.punched_at, person: ckOutCtx.person };
     document.getElementById("clock-done-title").textContent = "Clocked out";
-    document.getElementById("clock-done-sub").textContent =
-      firstName(ckOutCtx.person) + " — " + fmtDur(ckOutCtx.elapsed) + " today. " +
-      (saved ? "Hours are in." : "No signal — saved on this phone, will sync on its own.");
+    document.getElementById("clock-done-sub").textContent = ckOutCtx.stale
+      ? firstName(ckOutCtx.person) + " — " + fmtDay(ckOutCtx.inAt.toISOString()) +
+        "'s shift is fixed and closed. " +
+        (saved ? "You can clock in for today now."
+               : "No signal — saved on this phone, will sync on its own.")
+      : firstName(ckOutCtx.person) + " — " + fmtDur(ckOutCtx.elapsed) + " today. " +
+        (saved ? "Hours are in." : "No signal — saved on this phone, will sync on its own.");
     ckOutCtx = null;
     finishBtn.textContent = "Finish clock out";
     showClockCard("done");

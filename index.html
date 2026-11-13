@@ -102,6 +102,13 @@
       <p class="clock-who">Clock out &mdash; <span id="co-name"></span></p>
       <p class="clock-status" id="co-shift"></p>
       <p class="sub" id="co-existing" hidden></p>
+      <div id="co-stale" class="co-stale" hidden>
+        <p><strong>This shift is from a previous day</strong> &mdash; you never clocked out.
+        Set the time you actually finished that day, then log that day&rsquo;s work below.
+        Once it&rsquo;s fixed, you can clock in for today.</p>
+        <div class="field"><label class="f-label" for="co-out-time">Clock-out time that day</label>
+        <input type="time" id="co-out-time"></div>
+      </div>
       <div class="co-dictate">
         <label class="f-label" for="co-dictate-text">&#127908; Or just talk about your day</label>
         <p class="sub">Tap the box, tap the mic on your keyboard, and talk &mdash; like &ldquo;Two hours at the Plaza fixing a leak. An hour and a half at High Street on the water meter. Forty-five minutes driving. Took lunch.&rdquo; Then tap Sort it and check the list it fills in.</p>

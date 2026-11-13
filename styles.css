@@ -1193,6 +1193,22 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
 .co-tally.ok { color: #4ade80; }
 
+.co-stale {
+  border: 1px solid #b45309;
+  background: rgba(180, 83, 9, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+
+.co-stale p { margin: 0 0 8px; }
+
+.co-stale input[type="time"] {
+  font-size: 17px;
+  padding: 8px;
+  width: 100%;
+}
+
 /* fix-a-punch sheet */
 
 .punch-row {
