@@ -342,6 +342,8 @@
     }
 
     submitBtn.disabled = true;
+    // Snap "Kyle" → "Kyle Jelevach" so the entry counts as his everywhere.
+    result.values.person = await canonicalPerson(result.values.person);
 
     try {
       var photoUrls = [];
@@ -834,6 +836,7 @@
       bad = true;
     }
     if (bad) return;
+    person = await canonicalPerson(person);
 
     eSubmitBtn.disabled = true;
     eSubmitBtn.innerHTML = "Saving&hellip;";
@@ -1568,6 +1571,33 @@
   }
 
   /* ---------- members & identity ---------- */
+  // Names drift when the guys type "Kyle" instead of "Kyle Jelevach" —
+  // and then the clock tally can't see their Log Hours entries, the
+  // hours split into two people, and payroll comes out wrong. Snap any
+  // typed name to the crew member it clearly means (QA pass, 2026-11-13).
+  async function canonicalPerson(name) {
+    var raw = String(name || "").trim().replace(/\s+/g, " ");
+    if (!raw) return raw;
+    try {
+      var members = await loadMembers();
+      var lower = raw.toLowerCase();
+      var i;
+      for (i = 0; i < members.length; i++) {
+        if (members[i].person.toLowerCase() === lower) return members[i].person;
+      }
+      var parts = lower.split(" ");
+      var matches = members.filter(function (mm) {
+        return firstName(mm.person).toLowerCase() === parts[0];
+      });
+      if (matches.length === 1) {
+        if (parts.length === 1) return matches[0].person;
+        var last = matches[0].person.split(" ").pop().toLowerCase();
+        if (last.indexOf(parts[parts.length - 1]) === 0) return matches[0].person;
+      }
+    } catch (e) { /* offline — keep the typed name */ }
+    return raw;
+  }
+
   async function loadMembers() {
     if (ckMembers) return ckMembers;
     var res = await db.from("crew_members").select("person,pin_hash").order("person");
@@ -1913,14 +1943,20 @@
     coErr.textContent = "";
     coAddRow("job");
     // Jobs already logged today (Log Hours tab) count toward the shift.
+    // Match by first name, not the exact string: older entries logged as
+    // "Kyle" instead of "Kyle Jelevach" must still count (QA pass,
+    // 2026-11-13). New entries are snapped to the full name on save.
     try {
       var res = await db.from("crew_logs")
-        .select("hours")
-        .eq("person", ckPerson)
+        .select("hours,person")
         .eq("date", ckOutCtx.workDate);
       if (!res.error && res.data) {
-        ckOutCtx.existingCount = res.data.length;
-        ckOutCtx.existingHours = res.data.reduce(function (s, r) {
+        var mine = res.data.filter(function (r) {
+          return firstName(r.person).toLowerCase() ===
+            firstName(ckPerson).toLowerCase();
+        });
+        ckOutCtx.existingCount = mine.length;
+        ckOutCtx.existingHours = mine.reduce(function (s, r) {
           return s + Number(r.hours || 0);
         }, 0);
       }
@@ -2125,7 +2161,7 @@
   }
 
   function dayTalkSplit(norm) {
-    var marked = norm.replace(/\bthen\b/g, "\u0001").replace(/\band\s+(?=(?:spent|did|drove|driving|drive|worked|went|took)\b)/g, "\u0001");
+    var marked = norm.replace(/\bthen\b/g, "\u0001").replace(/\band\s+(?=(?:spent|did|drove|driving|drive|worked|went|took)\b)/g, "\u0001").replace(/\band\s+(?=\d)/g, "\u0001");
     var clauses = [], cur = "";
     function isDigit(ch) { return ch >= "0" && ch <= "9"; }
     for (var i = 0; i < marked.length; i++) {
@@ -2165,7 +2201,7 @@
     return out.charAt(0).toUpperCase() + out.slice(1);
   }
 
-  var DAYTALK_VERBS = { doing: 1, working: 1, fixing: 1, replacing: 1, installing: 1, repairing: 1, cleaning: 1, running: 1, using: 1, snaking: 1, jetting: 1, digging: 1, swapping: 1, pulling: 1, unclogging: 1, checking: 1, testing: 1, on: 1, for: 1 };
+  var DAYTALK_VERBS = { doing: 1, working: 1, fixing: 1, replacing: 1, installing: 1, repairing: 1, cleaning: 1, running: 1, using: 1, snaking: 1, jetting: 1, digging: 1, swapping: 1, pulling: 1, unclogging: 1, checking: 1, testing: 1, diagnosing: 1, inspecting: 1, troubleshooting: 1, loading: 1, scoping: 1, locating: 1, tracing: 1, on: 1, for: 1 };
 
   // Split "phoenix plaza fixing the leak" -> { location: "phoenix plaza", work: "fixing the leak" }
   function dayTalkSplitLocWork(text) {
@@ -2184,6 +2220,7 @@
   function dayTalkParse(text) {
     var clauses = dayTalkSplit(dayTalkNormalize(text));
     var out = { jobs: [], drives: [], lunch: false };
+    var pendingLoc = "";
 
     clauses.forEach(function (raw) {
       var clause = raw;
@@ -2195,11 +2232,28 @@
         }
         clause = clause.replace(/\b(took|take|taking|had|have|my|a|the|short)?\s*lunch\s*(break)?\b/g, " ").trim();
         if (!clause) return;
+        // "Took a 30 minute lunch": the duration belongs to lunch, not
+        // a job. If only filler words remain around it, it's lunch-only.
+        var lunchDur = dayTalkDuration(clause);
+        if (lunchDur) {
+          var filler = { took: 1, take: 1, a: 1, an: 1, the: 1, my: 1, short: 1, quick: 1, for: 1, it: 1, just: 1 };
+          var restTokens = dayTalkClean(lunchDur.rest).toLowerCase().split(" ").filter(Boolean);
+          if (restTokens.every(function (tk) { return filler[tk]; })) return;
+        }
       }
       var dur = dayTalkDuration(clause);
       if (!dur) {
         // Lunch-only leftovers ("no", "skipped") are not job detail — drop them.
         if (hadLunchMention && dayTalkClean(clause).split(" ").filter(Boolean).length <= 2) return;
+        // "I was at High Street, took 3 hours…" — remember the place
+        // for the first job that doesn't name one of its own.
+        if (!out.jobs.length && !pendingLoc) {
+          var atMatch = clause.match(/\bat\s+(.+)$/);
+          if (atMatch) {
+            var cand = dayTalkSentence(atMatch[1]);
+            if (cand && cand.split(" ").length <= 5) pendingLoc = cand.slice(0, 120);
+          }
+        }
         // No time mentioned — tack the detail onto the previous job's description.
         var frag = dayTalkSentence(clause);
         if (frag && out.jobs.length) {
@@ -2240,6 +2294,7 @@
       } else {
         jobName = desc.split(" ").slice(0, 8).join(" ");
       }
+      if (!location && pendingLoc) { location = pendingLoc; pendingLoc = ""; }
       if (!desc) desc = jobName;
       if (!jobName && !desc && !location) return; // stray duration with no content
       out.jobs.push({
@@ -2860,15 +2915,18 @@
   (function bootClock() {
     renderClockBanner();
     showClockCard("pin");
-    flushOutbox();
     window.addEventListener("online", flushOutbox);
-    // If this phone was left clocked in, say so right away.
-    var local = lsGet(LS_SHIFT);
-    if (local && local.person) {
-      ckBanner.innerHTML = "<strong>" + esc(firstName(local.person)) +
-        "</strong> is clocked in on this phone since " + fmtTime(local.since) +
-        " — enter your PIN to clock out.";
-      ckBanner.hidden = false;
-    }
+    // If this phone was left clocked in, say so right away — but only
+    // after the outbox flush settles, since flushing rewrites the
+    // banner and would wipe this notice (QA pass, 2026-11-13).
+    flushOutbox().then(function () {
+      var local = lsGet(LS_SHIFT);
+      if (local && local.person) {
+        ckBanner.innerHTML = "<strong>" + esc(firstName(local.person)) +
+          "</strong> is clocked in on this phone since " + fmtTime(local.since) +
+          " — enter your PIN to clock out.";
+        ckBanner.hidden = false;
+      }
+    });
   })();
 })();
