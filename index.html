@@ -370,7 +370,18 @@
           <textarea id="e_description" rows="4" maxlength="2000"></textarea>
           <p class="error-msg" data-error-for="e_description" hidden></p>
         </div>
-        <p class="sub">Photos stay attached as-is.</p>
+        <div class="field" data-field="e_photos">
+          <span class="f-label">Job photos</span>
+          <div class="photo-zone" id="e-photo-zone" role="button" tabindex="0" aria-label="Add job photos">
+            <div class="photo-zone-inner">
+              <span class="photo-icon">&#128247;</span>
+              <span class="photo-hint">Tap to add photos (up to 6)</span>
+            </div>
+          </div>
+          <input type="file" id="e-photo-input" accept="image/*" multiple hidden>
+          <div class="photo-thumbs" id="e-photo-thumbs"></div>
+          <p class="error-msg" data-error-for="e_photos" hidden></p>
+        </div>
         <div class="form-error" id="e-form-error" role="alert" hidden></div>
         <button type="submit" class="btn primary" id="e-submit-btn">Save changes</button>
       </form>

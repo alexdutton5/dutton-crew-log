@@ -708,6 +708,52 @@
     });
   }
 
+  /* ----- edit-entry photos: existing URLs + new picks (Alex, 2026-11-13) ----- */
+  var ePhotoZone = document.getElementById("e-photo-zone");
+  var ePhotoInput = document.getElementById("e-photo-input");
+  var ePhotoThumbs = document.getElementById("e-photo-thumbs");
+  var ePhotos = []; // [{url: "..."} already saved | {file: File} newly picked]
+
+  function renderEThumbs() {
+    ePhotoThumbs.innerHTML = "";
+    ePhotos.forEach(function (p, idx) {
+      var url = p.url || URL.createObjectURL(p.file);
+      var d = document.createElement("div");
+      d.className = "photo-thumb";
+      d.innerHTML = '<img src="' + esc(url) + '" alt="Job photo ' + (idx + 1) + '">' +
+        '<button type="button" class="thumb-remove" data-idx="' + idx + '" aria-label="Remove photo">&times;</button>';
+      ePhotoThumbs.appendChild(d);
+    });
+    ePhotoThumbs.querySelectorAll(".thumb-remove").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        ePhotos.splice(Number(btn.getAttribute("data-idx")), 1);
+        renderEThumbs();
+      });
+    });
+    ePhotoZone.querySelector(".photo-hint").textContent =
+      ePhotos.length === 0 ? "Tap to add photos (up to 6)" :
+      ePhotos.length + " photo" + (ePhotos.length === 1 ? "" : "s") + " — tap to add more";
+  }
+
+  ePhotoZone.addEventListener("click", function () { ePhotoInput.click(); });
+  ePhotoZone.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      ePhotoInput.click();
+    }
+  });
+  ePhotoInput.addEventListener("change", function () {
+    var files = Array.prototype.slice.call(ePhotoInput.files || []);
+    files.forEach(function (f) {
+      if (ePhotos.length < MAX_PHOTOS && f.type.indexOf("image/") === 0) {
+        ePhotos.push({ file: f });
+      }
+    });
+    ePhotoInput.value = "";
+    renderEThumbs();
+  });
+
   function eField(name) {
     return eForm.querySelector('[data-field="' + name + '"]');
   }
@@ -746,6 +792,8 @@
       entry.hours != null ? entry.hours : "";
     document.getElementById("e_description").value = entry.description || "";
     setEStatus(entry.status);
+    ePhotos = (entry.photo_urls || []).map(function (u) { return { url: u }; });
+    renderEThumbs();
     closeSheet();
     eFormBackdrop.hidden = false;
     document.body.style.overflow = "hidden";
@@ -790,6 +838,18 @@
     eSubmitBtn.disabled = true;
     eSubmitBtn.innerHTML = "Saving&hellip;";
     try {
+      var keptUrls = [];
+      var newFiles = [];
+      ePhotos.forEach(function (p) {
+        if (p.url) keptUrls.push(p.url);
+        else newFiles.push(p.file);
+      });
+      var uploadedUrls = [];
+      if (newFiles.length) {
+        eSubmitBtn.innerHTML = "Uploading photos&hellip;";
+        uploadedUrls = await uploadPhotos(newFiles);
+        eSubmitBtn.innerHTML = "Saving&hellip;";
+      }
       var res = await db.from("crew_logs").update({
         person: person,
         date: date,
@@ -797,7 +857,8 @@
         location: location || null,
         description: description,
         hours: hours,
-        status: eStatus
+        status: eStatus,
+        photo_urls: keptUrls.concat(uploadedUrls)
       }).eq("id", eEditingId);
       if (res.error) throw res.error;
       closeEditForm();
@@ -805,9 +866,13 @@
       if (byDate[date]) selectDay(date);
       window.scrollTo(0, 0);
     } catch (err) {
-      eFormError.textContent =
-        "Couldn't save — check your signal and tap Save changes again.";
-      eFormError.hidden = false;
+      if (err && err.message === "photos") {
+        eSetInvalid("e_photos", "Photo upload failed — check your signal and try again.");
+      } else {
+        eFormError.textContent =
+          "Couldn't save — check your signal and tap Save changes again.";
+        eFormError.hidden = false;
+      }
     } finally {
       eSubmitBtn.disabled = false;
       eSubmitBtn.innerHTML = "Save changes";
