@@ -37,7 +37,7 @@
   var photoInput = document.getElementById("photo-input");
   var photoThumbs = document.getElementById("photo-thumbs");
   var selectedPhotos = [];
-  var MAX_PHOTOS = 6;
+  var MAX_PHOTOS = 20;
 
   var calGrid = document.getElementById("cal-grid");
   var calTitle = document.getElementById("cal-title");
@@ -191,7 +191,7 @@
       });
     });
     photoZone.querySelector(".photo-hint").textContent =
-      selectedPhotos.length === 0 ? "Tap to add photos (up to 6)" :
+      selectedPhotos.length === 0 ? "Tap to add photos (up to " + MAX_PHOTOS + ")" :
       selectedPhotos.length + " photo" + (selectedPhotos.length === 1 ? "" : "s") + " — tap to add more";
   }
 
@@ -732,7 +732,7 @@
       });
     });
     ePhotoZone.querySelector(".photo-hint").textContent =
-      ePhotos.length === 0 ? "Tap to add photos (up to 6)" :
+      ePhotos.length === 0 ? "Tap to add photos (up to " + MAX_PHOTOS + ")" :
       ePhotos.length + " photo" + (ePhotos.length === 1 ? "" : "s") + " — tap to add more";
   }
 
